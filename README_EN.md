@@ -126,6 +126,14 @@ Want another service (Gemini CLI, Cursor, Copilot…)? Open an [issue](https://g
 
 If it saved you from one "limit reached" surprise, a ⭐️ helps it keep getting better.
 
+## Buy me a coffee
+
+If this project saved you some time, a coffee is always appreciated. ☕
+
+| WeChat Pay |
+| -------- |
+| <img src="assets/wechat-pay.png" width="220" alt="WeChat Pay tip code"> |
+
 ## License and trademarks
 
 [MIT](./LICENSE). Claude is a trademark of Anthropic; OpenAI / ChatGPT / Codex are trademarks of OpenAI; Grok / xAI are trademarks of xAI. Brand marks only identify each service and imply no endorsement. Screenshots use demo data.

@@ -126,6 +126,14 @@ AI_USAGE_METER_MOCK=1 cargo tauri dev   # 用演示数据运行
 
 如果它帮你省下了一次「额度用完」的打断，欢迎点个 ⭐️，这是让它继续变好的最大动力。
 
+## 请我喝杯咖啡
+
+如果这个项目帮你省了点时间，欢迎请我喝杯咖啡。☕
+
+| 微信赞赏码 |
+| -------- |
+| <img src="assets/wechat-pay.png" width="220" alt="微信赞赏码"> |
+
 ## 许可证与商标
 
 [MIT](./LICENSE)。Claude 是 Anthropic 的商标；OpenAI / ChatGPT / Codex 是 OpenAI 的商标；Grok / xAI 是 xAI 的商标。品牌图标仅用于标识对应服务，不代表任何背书。截图使用演示数据。
