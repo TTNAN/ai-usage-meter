@@ -1,0 +1,22 @@
+# ---> Rust
+/target/
+**/*.rs.bk
+
+# ---> Tauri
+src-tauri/target/
+
+# ---> OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ---> Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ---> Local env / secrets — NEVER commit tokens or credentials
+.env
+*.pem
+*.key

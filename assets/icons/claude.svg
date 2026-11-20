@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Original simplified "Claude" service mark: orange rounded square
+       with a white open "C" arc and a small spark dot.
+       NOT the official Claude logo. -->
+  <rect x="0" y="0" width="128" height="128" rx="30" fill="#D97757"/>
+  <path d="M 90.9 90.9 A 38 38 0 1 0 90.9 37.1" fill="none" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="92" cy="64" r="6.4" fill="#FFFFFF"/>
+</svg>
