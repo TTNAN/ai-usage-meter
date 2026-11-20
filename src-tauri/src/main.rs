@@ -193,7 +193,7 @@ fn main() {
             // Initial fetch so the tooltip is useful from the start.
             let state: State<AppState> = app.state();
             let status = fetch_due(&state, false);
-            update_tray(app, &status);
+            update_tray(app.handle(), &status);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![get_status, refresh_status, open_url])
