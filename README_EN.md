@@ -6,14 +6,6 @@
 
 ![AI Usage Meter](docs/screenshot.png)
 
-## Inspiration
-
-On 2026-11-19, [@Litx4i](https://x.com/Litx4i) posted on X: "为什么ai软件图标不能这样设计呢" ("Why can't AI app icons be designed like this?"), with a GIF of a black Dock where the three AI icons themselves were usage meters.
-
-Original post: https://x.com/Litx4i/status/2123400444458488080
-
-This project turns that idea into a real app: one small window, three icons, three usage bars.
-
 ## What it is
 
 AI Usage Meter is a Tauri v2 app (Rust + plain HTML/CSS/JS, no bundler). It lives in the menu bar on macOS and in the system tray on Windows.
