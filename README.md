@@ -4,7 +4,7 @@
 
 # AI Usage Meter
 
-**Claude、Codex、Grok 的订阅额度，常驻菜单栏，一眼看清。**
+**Claude、ChatGPT（Codex）、Grok 的订阅额度，常驻菜单栏，一眼看清。**
 
 中文 · [English](./README_EN.md)
 
@@ -26,9 +26,9 @@
 
 - **一眼看清最紧张的那一个** — 三环总览 + 大号数字，直接告诉你哪家额度最先见底、多久后重置。
 - **菜单栏图标本身就是仪表** — 三根小电量条实时显示各家剩余额度；macOS 上还可以在图标旁直接显示百分比。
-- **每个窗口都看得到** — Claude 的 5 小时 / 本周（以及 Opus、Sonnet 单独额度）、Codex 的 5 小时 / 本周、Grok 的计费周期，各自带倒计时。
+- **每个窗口都看得到** — Claude 的 5 小时 / 本周（以及 Opus、Sonnet 单独额度）、ChatGPT 里 Codex 的 5 小时 / 本周、Grok 的计费周期，各自带倒计时。
 - **订阅档位** — 自动识别 Max、Pro、Plus、SuperGrok 等档位。
-- **零配置** — 直接复用 Claude Code、Codex CLI、Grok Build 已有的登录状态，装好就能用。
+- **零配置** — 直接复用 Claude Code、ChatGPT 桌面版（Codex）/ Codex CLI、Grok Build 已有的登录状态，装好就能用。
 - **原生质感** — macOS 原生毛玻璃弹窗、跟随系统深浅色、点击图标弹出、失焦自动收起；Windows 上从托盘弹出。
 - **中英双语** — 跟随系统语言，也可在设置里切换。
 - **安静可靠** — 后台低频轮询、手动刷新有限速；单次请求失败会保留上次读数并标注，绝不编造数字。
@@ -49,13 +49,13 @@
 xattr -d com.apple.quarantine "/Applications/AI Usage Meter.app"
 ```
 
-然后登录你在用的 CLI（用哪个登哪个，没登录的会显示「未连接」）：
+然后登录你在用的工具（用哪个登哪个，没登录的会显示「未连接」）：
 
 | 服务 | 安装 | 登录 |
 | --- | --- | --- |
 | Claude | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `claude` |
-| Codex | [Codex CLI](https://github.com/openai/codex) | `codex login` |
-| Grok | [Grok Build](https://docs.x.ai/build/overview) | `grok login` |
+| ChatGPT（Codex 额度） | [ChatGPT 桌面版](https://openai.com/chatgpt/download/) 或 [Codex CLI](https://github.com/openai/codex) | 在 ChatGPT 桌面版里打开 Codex 并登录，或 `codex login` |
+| Grok | [Grok Build](https://docs.x.ai/build/overview)（xAI 官方命令行工具） | `grok login` |
 
 ## 快捷键
 
@@ -73,11 +73,13 @@ xattr -d com.apple.quarantine "/Applications/AI Usage Meter.app"
 | 服务 | 接口 | 凭证位置 | 轮询 |
 | --- | --- | --- | --- |
 | Claude | `GET api.anthropic.com/api/oauth/usage` | macOS 钥匙串 `Claude Code-credentials`，或 `~/.claude/.credentials.json` | 5 分钟 |
-| Codex | `GET chatgpt.com/backend-api/wham/usage` | `~/.codex/auth.json`（支持 `$CODEX_HOME`） | 1 分钟 |
+| ChatGPT（Codex） | `GET chatgpt.com/backend-api/wham/usage`；读不到登录或请求失败时，改读 `~/.codex/sessions` 里最近一次会话记录的额度 | `~/.codex/auth.json`（ChatGPT 桌面版与 Codex CLI 共用，支持 `$CODEX_HOME`） | 1 分钟 |
 | Grok | `GET cli-chat-proxy.grok.com/v1/billing` | `~/.grok/auth.json`（支持 `$GROK_HOME`） | 5 分钟 |
 
 > [!NOTE]
-> Codex 显示的是 **Codex 的用量额度**，不是 ChatGPT 网页版聊天的额度，两者是分开计算的。
+> 2026 年 7 月起 Codex 桌面版并入了 ChatGPT 桌面版，所以这一行叫 ChatGPT。它显示的是 **Codex 的用量额度**，不是 ChatGPT 聊天的额度，两者分开计算。
+>
+> Grok 一行读的是 **Grok Build**（xAI 的官方命令行编程工具）的登录和额度，不是 grok.com 网页版或 Grok 手机 / 桌面 App。
 
 ## 隐私
 

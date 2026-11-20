@@ -9,6 +9,7 @@ const REPO = "https://github.com/TTNAN/ai-usage-meter";
 const ORDER = ["claude", "codex", "grok"];
 const ACCENT_VAR = { claude: "--c-claude", codex: "--c-codex", grok: "--c-grok" };
 const CLI = { claude: "claude", codex: "codex login", grok: "grok login" };
+const LABEL = { claude: "Claude", codex: "ChatGPT", grok: "Grok" };
 
 const TAURI = window.__TAURI__ && window.__TAURI__.core ? window.__TAURI__ : null;
 const PREVIEW = !TAURI;
@@ -46,10 +47,14 @@ const STRINGS = {
     resetsNow: "resetting now",
     noneTitle: "Nothing connected",
     noneNum: "Sign in to a CLI",
-    noneLine: "Claude Code, Codex or Grok — then it just works.",
+    noneLine: "Claude Code, ChatGPT (Codex) or Grok Build — then it just works.",
     loading: "Reading your quotas…",
     win: { session: "5-hour", weekly: "Weekly", weekly_opus: "Opus", weekly_sonnet: "Sonnet", period: "Period" },
-    notConnected: (id) => `Not connected. Run \`${CLI[id]}\` once to sign in.`,
+    notConnected: (id) =>
+      id === "codex"
+        ? "Not connected. Open Codex in the ChatGPT desktop app and sign in, or run `codex login`."
+        : `Not connected. Run \`${CLI[id]}\` once to sign in.`,
+    fromSession: (t) => `from your latest Codex session · ${t}`,
     expired: (id) => `Login expired. Run \`${CLI[id]}\` once to refresh it.`,
     unavailable: (name) => `Couldn't reach ${name}. Retrying shortly.`,
     stale: "last reading",
@@ -85,10 +90,14 @@ const STRINGS = {
     resetsNow: "正在重置",
     noneTitle: "尚未连接",
     noneNum: "先登录一个 CLI",
-    noneLine: "Claude Code、Codex 或 Grok，登录后自动显示。",
+    noneLine: "Claude Code、ChatGPT（Codex）或 Grok Build，登录后自动显示。",
     loading: "正在读取额度…",
     win: { session: "5 小时", weekly: "本周", weekly_opus: "Opus", weekly_sonnet: "Sonnet", period: "周期" },
-    notConnected: (id) => `未连接。运行一次 \`${CLI[id]}\` 登录即可。`,
+    notConnected: (id) =>
+      id === "codex"
+        ? "未连接。在 ChatGPT 桌面版里打开 Codex 并登录，或运行 `codex login`。"
+        : `未连接。运行一次 \`${CLI[id]}\` 登录即可。`,
+    fromSession: (t) => `来自最近一次 Codex 会话 · ${t}`,
     expired: (id) => `登录已过期。运行一次 \`${CLI[id]}\` 刷新登录。`,
     unavailable: (name) => `暂时连不上 ${name}，稍后自动重试。`,
     stale: "上次读数",
@@ -126,12 +135,13 @@ function demoStatus(kind) {
   const now = Date.now() / 1000;
   const w = (k, used, inSecs, secs) => ({ kind: k, usedPercent: used, resetsAt: now + inSecs, windowSeconds: secs });
   if (kind === "empty") {
-    return ORDER.map((id) => ({ id, label: cap(id), state: "not_connected", plan: null, windows: [], fetchedAt: now }));
+    return ORDER.map((id) => ({ id, label: LABEL[id], state: "not_connected", plan: null, windows: [], fetchedAt: now }));
   }
   return [
     { id: "claude", label: "Claude", state: "mock", plan: "Max", fetchedAt: now,
       windows: [w("session", 42, 2 * 3600 + 14 * 60, 18000), w("weekly", 26, 3 * 86400 + 5 * 3600, 604800)] },
-    { id: "codex", label: "Codex", state: "mock", plan: "Plus", fetchedAt: now,
+    { id: "codex", label: "ChatGPT", state: "mock", plan: "Plus",
+      ...(kind === "mixed" ? { source: "session", fetchedAt: now - 12 * 60 } : { fetchedAt: now }),
       windows: [w("session", 37, 58 * 60, 18000), w("weekly", 18, 5 * 86400, 604800)] },
     kind === "mixed"
       ? { id: "grok", label: "Grok", state: "not_connected", plan: null, windows: [], fetchedAt: now }
@@ -268,6 +278,8 @@ function serviceRow(s) {
       })
       .join("")}</div>`;
     if (s.stale) body += `<div class="svc-msg"><span class="dot warn"></span><span class="stale-tag">${esc(t("stale"))}</span></div>`;
+    else if (s.source === "session")
+      body += `<div class="svc-msg"><span class="dot"></span><span data-ago="${s.fetchedAt}">${esc(t("fromSession")(fmtAgo(s.fetchedAt)))}</span></div>`;
   } else {
     const msg =
       s.state === "expired" ? t("expired")(s.id)
@@ -313,11 +325,19 @@ function render() {
   tick();
 }
 
+function fmtAgo(unixSecs) {
+  const secs = Date.now() / 1000 - unixSecs;
+  return secs < 45 ? t("justNow") : t("ago")(fmtDur(secs));
+}
+
 /** Once a second: countdowns and "updated" only — no re-layout. */
 function tick() {
   document.querySelectorAll("[data-reset]").forEach((el) => {
     const v = el.dataset.reset === "" ? null : parseFloat(el.dataset.reset);
     el.textContent = el.dataset.resetFmt === "sentence" ? resetSentence(v) : fmtReset(v);
+  });
+  document.querySelectorAll("[data-ago]").forEach((el) => {
+    el.textContent = t("fromSession")(fmtAgo(parseFloat(el.dataset.ago)));
   });
   const up = document.getElementById("updated");
   if (!lastUpdate) { up.textContent = ""; return; }
@@ -393,7 +413,7 @@ async function boot() {
     } catch (_) {}
     if (platform === "macos") root.classList.add("vibrancy");
   }
-  if (PREVIEW) document.getElementById("version").textContent = "v0.2.0";
+  if (PREVIEW) document.getElementById("version").textContent = "v0.2.1";
   root.classList.add("platform-" + platform);
   if (platform !== "macos") {
     document.getElementById("setting-tray").hidden = true;

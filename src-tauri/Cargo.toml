@@ -1,6 +1,6 @@
 [package]
 name = "ai-usage-meter"
-version = "0.2.0"
+version = "0.2.1"
 description = "See how much Claude, Codex and Grok quota you have left — right from your menu bar / system tray."
 authors = ["TTNAN"]
 license = "MIT"

@@ -4,7 +4,7 @@
 
 # AI Usage Meter
 
-**Your Claude, Codex and Grok limits — live in the menu bar.**
+**Your Claude, ChatGPT (Codex) and Grok limits — live in the menu bar.**
 
 [中文](./README.md) · English
 
@@ -26,9 +26,9 @@ Tired of hitting "usage limit reached" mid-task? AI Usage Meter puts every 5-hou
 
 - **See the tightest limit first** — three rings and one big number tell you which quota runs out first and when it resets.
 - **The icon is the gauge** — three tiny battery bars show what's left of each quota; on macOS you can show the percentage right next to it.
-- **Every window, not just one** — Claude 5-hour / weekly (plus separate Opus and Sonnet limits), Codex 5-hour / weekly, Grok's billing period, each with its own countdown.
+- **Every window, not just one** — Claude 5-hour / weekly (plus separate Opus and Sonnet limits), Codex 5-hour / weekly in ChatGPT, Grok's billing period, each with its own countdown.
 - **Plan aware** — picks up Max, Pro, Plus, SuperGrok and friends.
-- **Zero setup** — reuses the logins of Claude Code, Codex CLI and Grok Build. Install and go.
+- **Zero setup** — reuses the logins of Claude Code, the ChatGPT desktop app (Codex) / Codex CLI and Grok Build. Install and go.
 - **Feels native** — real macOS popover material, follows light and dark mode, opens from the icon and tucks away when you click elsewhere; a tray flyout on Windows.
 - **English and 中文** — follows your system language, switchable in Settings.
 - **Calm and honest** — gentle background polling, rate-limited manual refresh; one failed request keeps the last reading (clearly marked) and it never makes numbers up.
@@ -49,13 +49,13 @@ Grab the latest build from [Releases](https://github.com/TTNAN/ai-usage-meter/re
 xattr -d com.apple.quarantine "/Applications/AI Usage Meter.app"
 ```
 
-Then sign in to whichever CLIs you use (the rest just show "Not connected"):
+Then sign in to whichever tools you use (the rest just show "Not connected"):
 
 | Service | Install | Sign in |
 | --- | --- | --- |
 | Claude | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `claude` |
-| Codex | [Codex CLI](https://github.com/openai/codex) | `codex login` |
-| Grok | [Grok Build](https://docs.x.ai/build/overview) | `grok login` |
+| ChatGPT (Codex quota) | [ChatGPT desktop app](https://openai.com/chatgpt/download/) or [Codex CLI](https://github.com/openai/codex) | Open Codex in the ChatGPT app and sign in, or `codex login` |
+| Grok | [Grok Build](https://docs.x.ai/build/overview) (xAI's official CLI) | `grok login` |
 
 ## Shortcuts
 
@@ -73,11 +73,13 @@ None of the three services offers a public "subscription quota" API, so AI Usage
 | Service | Endpoint | Credential | Polling |
 | --- | --- | --- | --- |
 | Claude | `GET api.anthropic.com/api/oauth/usage` | macOS Keychain `Claude Code-credentials`, or `~/.claude/.credentials.json` | 5 min |
-| Codex | `GET chatgpt.com/backend-api/wham/usage` | `~/.codex/auth.json` (`$CODEX_HOME` respected) | 1 min |
+| ChatGPT (Codex) | `GET chatgpt.com/backend-api/wham/usage`; if no login is readable or the request fails, the limits recorded in your newest session under `~/.codex/sessions` | `~/.codex/auth.json` (shared by the ChatGPT app and Codex CLI, `$CODEX_HOME` respected) | 1 min |
 | Grok | `GET cli-chat-proxy.grok.com/v1/billing` | `~/.grok/auth.json` (`$GROK_HOME` respected) | 5 min |
 
 > [!NOTE]
-> The Codex row shows your **Codex** quota, not ChatGPT web-chat limits. They are counted separately.
+> Since July 2026 the Codex app is part of the ChatGPT desktop app, so the row is called ChatGPT. It shows your **Codex** quota, not ChatGPT chat limits; they are counted separately.
+>
+> The Grok row reads **Grok Build** (xAI's official coding CLI), not grok.com or the Grok mobile / desktop apps.
 
 ## Privacy
 
