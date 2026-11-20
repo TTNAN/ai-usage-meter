@@ -75,7 +75,7 @@ function render() {
         s.state === "connected" || s.state === "mock"
           ? `<div class="countdown"><span class="cd-time" style="color:${color}">${fmtCountdown(resetIn)}</span> <span class="cd-label">· ${fmtReset(resetIn)}</span></div>`
           : `<div class="countdown"><span class="cd-time" style="color:#8e8e96">—</span></div>`;
-      return `<div class="card ${remaining != null && remaining <= 15 ? "low" : ""}">
+      return `<div class="card ${remaining != null && remaining <= 15 ? "low" : ""}" data-service="${s.id}">
         <img class="icon" src="${s.id}.png" alt="${escapeHtml(s.label)}" />
         <div class="name">${escapeHtml(s.label)}</div>
         <div class="note-line">${escapeHtml(CARD_NOTES[s.id] || "")}</div>
