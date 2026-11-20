@@ -1,54 +1,110 @@
 //! Usage providers: Claude, Codex and Grok.
 //!
-//! All three services expose NO official "how much subscription quota is
-//! left" API. v1 therefore reads the same internal endpoints the official
-//! CLIs use, reusing the login state those CLIs already stored on disk
-//! (the pattern used by the `Quota` project). Only read-only GET requests,
-//! at low frequency. If anything fails we report "unavailable" — we never
-//! invent numbers.
+//! None of the three services publishes an official "how much of my
+//! subscription is left" API. We read the same internal endpoints the
+//! official CLIs use, reusing the login those CLIs already stored on this
+//! machine. Read-only GET requests, at low frequency. When anything fails
+//! we say so — we never invent numbers.
 //!
-//! * Claude — GET https://api.anthropic.com/api/oauth/usage
-//!   Bearer <Claude Code OAuth token>, header `anthropic-beta: oauth-2025-04-20`.
-//!   Token lives in `~/.claude/.credentials.json` (`claudeAiOauth.accessToken`).
-//!   Returns `five_hour.utilization` + `resets_at`, `seven_day.*`.
-//! * Codex — GET https://chatgpt.com/backend-api/wham/usage
-//!   Bearer <Codex OAuth access_token>, header `chatgpt-account-id`.
-//!   Token lives in `~/.codex/auth.json` (`tokens.access_token`).
-//!   Returns `rate_limit.primary_window` (5h) + `secondary_window` (7d).
-//!   NOTE: this is Codex quota, NOT ChatGPT web-chat quota.
-//! * Grok — GET https://cli-chat-proxy.grok.com/v1/billing?format=credits
-//!   Bearer <token from ~/.grok/auth.json>, header `x-xai-token-auth: xai-grok-cli`.
-//!   Returns `config.creditUsagePercent` (used, 0-100) + `currentPeriod`.
+//! | Service | Endpoint | Credential |
+//! | ------- | -------- | ---------- |
+//! | Claude  | `GET https://api.anthropic.com/api/oauth/usage` | Claude Code OAuth token: macOS Keychain item `Claude Code-credentials`, else `~/.claude/.credentials.json` |
+//! | Codex   | `GET https://chatgpt.com/backend-api/wham/usage` | `~/.codex/auth.json` (`$CODEX_HOME` respected) |
+//! | Grok    | `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` | Grok Build CLI: `~/.grok/auth.json` (`$GROK_HOME` respected) |
 //!
-//! Tokens are read from disk at call time and never written anywhere by
-//! this app. Nothing is uploaded to any server.
+//! Tokens are read at call time, held in memory only for the request, and
+//! never written or sent anywhere except to the service they belong to.
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-/// One service's usage state, as shown on one card.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// ------------------------------------------------------------------ model
+
+/// One rate-limit window (e.g. "5-hour session", "weekly").
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageWindow {
+    /// Stable key the UI localises: "session" | "weekly" | "weekly_opus" |
+    /// "weekly_sonnet" | "period".
+    pub kind: &'static str,
+    /// Percent of the window already USED, 0–100.
+    pub used_percent: f64,
+    /// Unix seconds when this window resets, if known.
+    pub resets_at: Option<i64>,
+    /// Length of the window in seconds, if known.
+    pub window_seconds: Option<i64>,
+}
+
+/// Connection state of one service.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum State {
+    /// Live numbers from the service.
+    Connected,
+    /// No CLI login found on this machine.
+    NotConnected,
+    /// Login found but the service rejected it (401/403).
+    Expired,
+    /// Request failed or the response was not understood.
+    Unavailable,
+    /// Demo data (AI_USAGE_METER_MOCK=1 or browser preview).
+    Mock,
+}
+
+/// One service, as shown on one row.
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceStatus {
     pub id: &'static str,
     pub label: &'static str,
-    /// "connected" | "not_connected" | "unavailable" | "mock"
-    pub state: &'static str,
-    /// Percent USED in the primary window (0-100), if known.
-    pub used_percent: Option<f64>,
-    /// Percent USED in the secondary (weekly) window, if known.
-    pub secondary_used_percent: Option<f64>,
-    /// Unix timestamp (seconds) when the primary window resets, if known.
-    pub resets_at: Option<i64>,
-    /// Unix timestamp (seconds) when the secondary window resets, if known.
-    pub secondary_resets_at: Option<i64>,
-    /// Short human-readable note (e.g. why unavailable).
+    pub state: State,
+    /// Subscription tier when the service reports it ("Max", "Pro", "Plus"…).
+    pub plan: Option<String>,
+    /// Windows, most urgent first (the first one is the headline number).
+    pub windows: Vec<UsageWindow>,
+    /// Short human-readable detail (why unavailable, what to run…).
     pub note: Option<String>,
+    /// Unix seconds when this status was fetched.
+    pub fetched_at: i64,
+    /// True when the latest request failed and these are the last good
+    /// numbers we had (kept so a single hiccup doesn't blank the row).
+    pub stale: bool,
 }
 
-fn now_unix() -> i64 {
+impl ServiceStatus {
+    fn new(id: &'static str, label: &'static str, state: State) -> Self {
+        ServiceStatus {
+            id,
+            label,
+            state,
+            plan: None,
+            windows: Vec::new(),
+            note: None,
+            fetched_at: now_unix(),
+            stale: false,
+        }
+    }
+    fn with_note(mut self, note: impl Into<String>) -> Self {
+        self.note = Some(note.into());
+        self
+    }
+    /// Highest used-percent across all windows — the binding constraint.
+    pub fn peak_used(&self) -> Option<f64> {
+        self.windows
+            .iter()
+            .map(|w| w.used_percent)
+            .fold(None, |acc, p| Some(acc.map_or(p, |a: f64| a.max(p))))
+    }
+    pub fn has_numbers(&self) -> bool {
+        matches!(self.state, State::Connected | State::Mock) && !self.windows.is_empty()
+    }
+}
+
+// ---------------------------------------------------------------- helpers
+
+pub fn now_unix() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -57,8 +113,13 @@ fn now_unix() -> i64 {
 
 fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME")
+        .filter(|h| !h.is_empty())
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))
+}
+
+fn env_nonempty(key: &str) -> Option<String> {
+    std::env::var(key).ok().filter(|v| !v.trim().is_empty())
 }
 
 fn read_json_file(path: &PathBuf) -> Option<serde_json::Value> {
@@ -66,397 +127,534 @@ fn read_json_file(path: &PathBuf) -> Option<serde_json::Value> {
     serde_json::from_str(&text).ok()
 }
 
-/// Walk a JSON value depth-first and return the first string found under
-/// any of the given keys. Credential files change shape between CLI
-/// versions; this keeps us working across them.
+/// Depth-first search for the first non-empty string under any of `keys`.
+/// Credential files change shape between CLI versions; this keeps us
+/// working across them.
 fn find_string<'a>(v: &'a serde_json::Value, keys: &[&str]) -> Option<&'a str> {
     match v {
         serde_json::Value::Object(map) => {
             for (k, val) in map {
                 if keys.contains(&k.as_str()) {
-                    if let serde_json::Value::String(s) = val {
-                        if !s.is_empty() {
-                            return Some(s);
-                        }
+                    if let Some(s) = val.as_str().filter(|s| !s.is_empty()) {
+                        return Some(s);
                     }
                 }
-                if let Some(found) = find_string(val, keys) {
-                    return Some(found);
-                }
             }
-            None
+            map.values().find_map(|val| find_string(val, keys))
         }
-        serde_json::Value::Array(items) => {
-            items.iter().find_map(|item| find_string(item, keys))
-        }
+        serde_json::Value::Array(items) => items.iter().find_map(|i| find_string(i, keys)),
         _ => None,
     }
 }
 
-fn http_get_json(url: &str, headers: &[(&str, String)]) -> Result<serde_json::Value, String> {
+fn as_f64(v: Option<&serde_json::Value>) -> Option<f64> {
+    let v = v?;
+    v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+}
+
+/// Accept unix seconds, unix milliseconds, or an RFC 3339 string.
+fn as_timestamp(v: Option<&serde_json::Value>) -> Option<i64> {
+    let v = v?;
+    if let Some(n) = v.as_f64() {
+        let n = n as i64;
+        return Some(if n > 100_000_000_000 { n / 1000 } else { n });
+    }
+    v.as_str().and_then(parse_rfc3339)
+}
+
+enum HttpError {
+    Auth(u16),
+    Status(u16),
+    Other(String),
+}
+
+impl HttpError {
+    fn describe(&self) -> String {
+        match self {
+            HttpError::Auth(c) | HttpError::Status(c) => format!("HTTP {c}"),
+            HttpError::Other(e) => e.clone(),
+        }
+    }
+}
+
+fn http_get_json(url: &str, headers: &[(&str, String)]) -> Result<serde_json::Value, HttpError> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(15))
-        .user_agent("ai-usage-meter/0.1.0")
+        .user_agent(concat!("ai-usage-meter/", env!("CARGO_PKG_VERSION")))
         .build()
-        .map_err(|e| format!("http client: {e}"))?;
-    let mut req = client.get(url);
+        .map_err(|e| HttpError::Other(format!("http client: {e}")))?;
+    let mut req = client.get(url).header("Accept", "application/json");
     for (k, v) in headers {
         req = req.header(*k, v.as_str());
     }
-    let resp = req.send().map_err(|e| format!("request: {e}"))?;
-    let status = resp.status();
-    if !status.is_success() {
-        return Err(format!("HTTP {status}"));
+    let resp = req.send().map_err(|e| {
+        HttpError::Other(if e.is_timeout() {
+            "timed out".into()
+        } else if e.is_connect() {
+            "offline or blocked".into()
+        } else {
+            "network error".into()
+        })
+    })?;
+    let code = resp.status().as_u16();
+    if code == 401 || code == 403 {
+        return Err(HttpError::Auth(code));
+    }
+    if !resp.status().is_success() {
+        return Err(HttpError::Status(code));
     }
     resp.json::<serde_json::Value>()
-        .map_err(|e| format!("bad json: {e}"))
+        .map_err(|_| HttpError::Other("unexpected response".into()))
 }
 
-fn parse_rfc3339(s: &str) -> Option<i64> {
-    // Minimal RFC3339 parser: "2026-02-08T04:59:59Z" or with +00:00 offset.
+/// RFC 3339 → unix seconds, honouring the UTC offset
+/// (`2026-02-08T04:59:59Z`, `2026-02-08T12:59:59.123+08:00`).
+pub fn parse_rfc3339(s: &str) -> Option<i64> {
     let s = s.trim();
-    let (date, time) = s.split_once('T')?;
+    let (date, rest) = s.split_once(['T', 't', ' '])?;
     let mut d = date.split('-');
     let year: i64 = d.next()?.parse().ok()?;
     let month: i64 = d.next()?.parse().ok()?;
     let day: i64 = d.next()?.parse().ok()?;
-    let time = time.trim_end_matches('Z');
-    let time = time.split(['+', '-']).next().unwrap_or(time);
-    let mut t = time.split(':');
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+
+    // Split the clock from the offset.
+    let (clock, offset_secs) = if let Some(c) = rest.strip_suffix(['Z', 'z']) {
+        (c, 0)
+    } else if let Some(idx) = rest.rfind(['+', '-']) {
+        let (c, off) = rest.split_at(idx);
+        let sign = if off.starts_with('-') { -1 } else { 1 };
+        let off = &off[1..];
+        let (oh, om) = off.split_once(':').unwrap_or((off.get(..2)?, off.get(2..).unwrap_or("0")));
+        let oh: i64 = oh.parse().ok()?;
+        let om: i64 = if om.is_empty() { 0 } else { om.parse().ok()? };
+        (c, sign * (oh * 3600 + om * 60))
+    } else {
+        (rest, 0)
+    };
+
+    let mut t = clock.split(':');
     let hour: i64 = t.next()?.parse().ok()?;
     let min: i64 = t.next()?.parse().ok()?;
     let sec: i64 = t.next().unwrap_or("0").split('.').next()?.parse().ok()?;
-    // Days since epoch (civil algorithm).
+
+    // Days since epoch (Howard Hinnant's civil algorithm).
     let y = if month <= 2 { year - 1 } else { year };
     let era = if y >= 0 { y } else { y - 399 } / 400;
     let yoe = y - era * 400;
     let mp = (month + 9) % 12;
     let doy = (153 * mp + 2) / 5 + day - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    let days = era * 146097 + doe - 719468;
-    Some(days * 86400 + hour * 3600 + min * 60 + sec)
+    let days = era * 146_097 + doe - 719_468;
+    Some(days * 86_400 + hour * 3600 + min * 60 + sec - offset_secs)
 }
 
-// ---------------------------------------------------------------- Claude
+fn title_case(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + &c.as_str().to_lowercase(),
+        None => String::new(),
+    }
+}
 
-fn claude_token() -> Option<String> {
-    if let Ok(t) = std::env::var("CLAUDE_CODE_OAUTH_TOKEN") {
-        if !t.is_empty() {
-            return Some(t);
+fn kind_for_seconds(secs: Option<i64>, fallback: &'static str) -> &'static str {
+    match secs {
+        Some(s) if s <= 6 * 3600 => "session",
+        Some(s) if (6 * 86_400..=8 * 86_400).contains(&s) => "weekly",
+        Some(_) => "period",
+        None => fallback,
+    }
+}
+
+// ----------------------------------------------------------------- Claude
+
+fn claude_config_dir() -> Option<PathBuf> {
+    env_nonempty("CLAUDE_CONFIG_DIR")
+        .map(PathBuf::from)
+        .or_else(|| home_dir().map(|h| h.join(".claude")))
+}
+
+/// Claude Code keeps its OAuth credentials in the macOS Keychain; on Linux
+/// and Windows they live in `~/.claude/.credentials.json`.
+fn claude_credentials() -> Option<serde_json::Value> {
+    #[cfg(target_os = "macos")]
+    {
+        let out = std::process::Command::new("/usr/bin/security")
+            .args(["find-generic-password", "-s", "Claude Code-credentials", "-w"])
+            .output()
+            .ok();
+        if let Some(out) = out.filter(|o| o.status.success()) {
+            let text = String::from_utf8_lossy(&out.stdout);
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(text.trim()) {
+                return Some(v);
+            }
         }
     }
-    let home = home_dir()?;
-    let creds = read_json_file(&home.join(".claude").join(".credentials.json"))?;
-    // Official shape: { "claudeAiOauth": { "accessToken": "sk-ant-oat01-..." } }
-    let direct = creds
-        .get("claudeAiOauth")
-        .and_then(|o| o.get("accessToken"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    direct.or_else(|| {
-        find_string(&creds, &["accessToken", "access_token"])
-            .map(|s| s.to_string())
-    })
+    read_json_file(&claude_config_dir()?.join(".credentials.json"))
 }
 
 pub fn fetch_claude() -> ServiceStatus {
-    let base = ServiceStatus {
-        id: "claude",
-        label: "Claude",
-        state: "not_connected",
-        used_percent: None,
-        secondary_used_percent: None,
-        resets_at: None,
-        secondary_resets_at: None,
-        note: Some("Claude Code is not logged in. Install Claude Code and run it once.".into()),
+    let base = ServiceStatus::new("claude", "Claude", State::NotConnected);
+
+    let (token, plan) = if let Some(t) = env_nonempty("CLAUDE_CODE_OAUTH_TOKEN") {
+        (t, None)
+    } else {
+        let Some(creds) = claude_credentials() else {
+            return base.with_note("Sign in to Claude Code once (run `claude`).");
+        };
+        let oauth = creds.get("claudeAiOauth").unwrap_or(&creds);
+        let token = oauth
+            .get("accessToken")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .or_else(|| find_string(&creds, &["accessToken", "access_token"]).map(str::to_string));
+        let Some(token) = token else {
+            return base.with_note("Sign in to Claude Code once (run `claude`).");
+        };
+        let plan = oauth
+            .get("subscriptionType")
+            .and_then(|v| v.as_str())
+            .map(title_case);
+        (token, plan)
     };
-    let token = match claude_token() {
-        Some(t) => t,
-        None => return base,
-    };
-    let url = "https://api.anthropic.com/api/oauth/usage";
+
     let res = http_get_json(
-        url,
+        "https://api.anthropic.com/api/oauth/usage",
         &[
             ("Authorization", format!("Bearer {token}")),
             ("anthropic-beta", "oauth-2025-04-20".to_string()),
         ],
     );
-    match res {
-        Ok(v) => {
-            let five = v.get("five_hour");
-            let seven = v.get("seven_day");
-            let used = five.and_then(|f| f.get("utilization")).and_then(|u| u.as_f64());
-            let resets = five
-                .and_then(|f| f.get("resets_at"))
-                .and_then(|r| r.as_str())
-                .and_then(parse_rfc3339);
-            let seven_used = seven.and_then(|f| f.get("utilization")).and_then(|u| u.as_f64());
-            let seven_resets = seven
-                .and_then(|f| f.get("resets_at"))
-                .and_then(|r| r.as_str())
-                .and_then(parse_rfc3339);
-            ServiceStatus {
-                state: if used.is_some() { "connected" } else { "unavailable" },
-                used_percent: used,
-                secondary_used_percent: seven_used,
-                resets_at: resets,
-                secondary_resets_at: seven_resets,
-                note: if used.is_none() {
-                    Some("Claude returned an unexpected response.".into())
-                } else {
-                    None
-                },
-                ..base
-            }
+    let v = match res {
+        Ok(v) => v,
+        Err(HttpError::Auth(_)) => {
+            return ServiceStatus { state: State::Expired, plan, ..base }
+                .with_note("Login expired — open Claude Code once to refresh it.")
         }
-        Err(e) => ServiceStatus {
-            state: "unavailable",
-            note: Some(format!("Could not reach Claude usage API ({e}). Showing nothing rather than stale numbers.")),
-            ..base
-        },
+        Err(e) => {
+            return ServiceStatus { state: State::Unavailable, plan, ..base }
+                .with_note(format!("Couldn't reach Claude ({}).", e.describe()))
+        }
+    };
+    let windows = parse_claude(&v);
+    if windows.is_empty() {
+        return ServiceStatus { state: State::Unavailable, plan, ..base }
+            .with_note("Claude returned a response we don't understand yet.");
     }
+    ServiceStatus { state: State::Connected, plan, windows, ..base }
 }
 
-// ----------------------------------------------------------------- Codex
+fn parse_claude(v: &serde_json::Value) -> Vec<UsageWindow> {
+    let mut out = Vec::new();
+    for (key, kind, secs) in [
+        ("five_hour", "session", 5 * 3600),
+        ("seven_day", "weekly", 7 * 86_400),
+        ("seven_day_opus", "weekly_opus", 7 * 86_400),
+        ("seven_day_sonnet", "weekly_sonnet", 7 * 86_400),
+    ] {
+        let Some(w) = v.get(key).filter(|w| !w.is_null()) else { continue };
+        let Some(used) = as_f64(w.get("utilization")) else { continue };
+        // Model-specific weekly windows are noise until they are in use.
+        if kind != "session" && kind != "weekly" && used <= 0.0 {
+            continue;
+        }
+        out.push(UsageWindow {
+            kind,
+            used_percent: used.clamp(0.0, 100.0),
+            resets_at: as_timestamp(w.get("resets_at")),
+            window_seconds: Some(secs),
+        });
+    }
+    out
+}
+
+// ------------------------------------------------------------------ Codex
 
 fn codex_auth() -> Option<(String, Option<String>)> {
-    if let Ok(t) = std::env::var("CODEX_ACCESS_TOKEN") {
-        if !t.is_empty() {
-            return Some((t, std::env::var("CHATGPT_ACCOUNT_ID").ok()));
-        }
+    if let Some(t) = env_nonempty("CODEX_ACCESS_TOKEN") {
+        return Some((t, env_nonempty("CHATGPT_ACCOUNT_ID")));
     }
-    let home = home_dir()?;
-    let auth = read_json_file(&home.join(".codex").join("auth.json"))?;
-    // Official shape: { "tokens": { "access_token": "...", "account_id": "..." } }
-    let token = auth
-        .get("tokens")
+    let dir = env_nonempty("CODEX_HOME")
+        .map(PathBuf::from)
+        .or_else(|| home_dir().map(|h| h.join(".codex")))?;
+    let auth = read_json_file(&dir.join("auth.json"))?;
+    let tokens = auth.get("tokens");
+    let token = tokens
         .and_then(|t| t.get("access_token"))
         .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .or_else(|| find_string(&auth, &["access_token"]).map(|s| s.to_string()))
-        .or_else(|| find_string(&auth, &["OPENAI_API_KEY"]).map(|s| s.to_string()))?;
-    let account = auth
-        .get("tokens")
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .or_else(|| find_string(&auth, &["access_token", "accessToken"]).map(str::to_string))?;
+    let account = tokens
         .and_then(|t| t.get("account_id"))
         .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .or_else(|| find_string(&auth, &["account_id", "accountId"]).map(|s| s.to_string()));
+        .map(str::to_string)
+        .or_else(|| find_string(&auth, &["account_id", "accountId"]).map(str::to_string));
     Some((token, account))
 }
 
 pub fn fetch_codex() -> ServiceStatus {
-    let base = ServiceStatus {
-        id: "codex",
-        label: "Codex",
-        state: "not_connected",
-        used_percent: None,
-        secondary_used_percent: None,
-        resets_at: None,
-        secondary_resets_at: None,
-        note: Some("Codex CLI is not logged in. Install Codex and run `codex` once.".into()),
-    };
-    let (token, account) = match codex_auth() {
-        Some(t) => t,
-        None => return base,
+    let base = ServiceStatus::new("codex", "Codex", State::NotConnected);
+    let Some((token, account)) = codex_auth() else {
+        return base.with_note("Sign in to Codex CLI once (run `codex login`).");
     };
     let mut headers: Vec<(&str, String)> = vec![("Authorization", format!("Bearer {token}"))];
     if let Some(a) = account {
         headers.push(("chatgpt-account-id", a));
     }
-    let res = http_get_json("https://chatgpt.com/backend-api/wham/usage", &headers);
-    match res {
-        Ok(v) => {
-            let rl = v.get("rate_limit");
-            let primary = rl.and_then(|r| r.get("primary_window"));
-            let secondary = rl.and_then(|r| r.get("secondary_window"));
-            let used = primary
-                .and_then(|w| w.get("used_percent"))
-                .and_then(|u| u.as_f64());
-            let resets = primary
-                .and_then(|w| w.get("reset_at"))
-                .and_then(|r| r.as_i64());
-            let seven_used = secondary
-                .and_then(|w| w.get("used_percent"))
-                .and_then(|u| u.as_f64());
-            let seven_resets = secondary
-                .and_then(|w| w.get("reset_at"))
-                .and_then(|r| r.as_i64());
-            ServiceStatus {
-                state: if used.is_some() { "connected" } else { "unavailable" },
-                used_percent: used,
-                secondary_used_percent: seven_used,
-                resets_at: resets,
-                secondary_resets_at: seven_resets,
-                note: if used.is_none() {
-                    Some("Codex returned an unexpected response.".into())
-                } else {
-                    None
-                },
-                ..base
-            }
+    let v = match http_get_json("https://chatgpt.com/backend-api/wham/usage", &headers) {
+        Ok(v) => v,
+        Err(HttpError::Auth(_)) => {
+            return ServiceStatus { state: State::Expired, ..base }
+                .with_note("Login expired — run `codex` once to refresh it.")
         }
-        Err(e) => ServiceStatus {
-            state: "unavailable",
-            note: Some(format!("Could not reach Codex usage API ({e}).")),
-            ..base
-        },
+        Err(e) => {
+            return ServiceStatus { state: State::Unavailable, ..base }
+                .with_note(format!("Couldn't reach Codex ({}).", e.describe()))
+        }
+    };
+    let plan = v
+        .get("plan_type")
+        .and_then(|p| p.as_str())
+        .filter(|p| !p.is_empty())
+        .map(title_case);
+    let windows = parse_codex(&v, now_unix());
+    if windows.is_empty() {
+        return ServiceStatus { state: State::Unavailable, plan, ..base }
+            .with_note("Codex returned a response we don't understand yet.");
     }
+    ServiceStatus { state: State::Connected, plan, windows, ..base }
 }
 
-// ------------------------------------------------------------------ Grok
+fn parse_codex(v: &serde_json::Value, now: i64) -> Vec<UsageWindow> {
+    let rl = v.get("rate_limit").unwrap_or(v);
+    let mut out = Vec::new();
+    for (key, fallback) in [("primary_window", "session"), ("secondary_window", "weekly")] {
+        let Some(w) = rl.get(key).filter(|w| !w.is_null()) else { continue };
+        let Some(used) = as_f64(w.get("used_percent")) else { continue };
+        let secs = as_f64(w.get("limit_window_seconds")).map(|s| s as i64);
+        let resets_at = as_timestamp(w.get("reset_at"))
+            .or_else(|| as_f64(w.get("reset_after_seconds")).map(|s| now + s as i64));
+        out.push(UsageWindow {
+            kind: kind_for_seconds(secs, fallback),
+            used_percent: used.clamp(0.0, 100.0),
+            resets_at,
+            window_seconds: secs,
+        });
+    }
+    out
+}
+
+// ------------------------------------------------------------------- Grok
 
 fn grok_token() -> Option<String> {
-    if let Ok(t) = std::env::var("GROK_ACCESS_TOKEN") {
-        if !t.is_empty() {
-            return Some(t);
-        }
+    if let Some(t) = env_nonempty("GROK_ACCESS_TOKEN") {
+        return Some(t);
     }
-    let home = home_dir()?;
-    let auth = read_json_file(&home.join(".grok").join("auth.json"))?;
+    let dir = env_nonempty("GROK_HOME")
+        .map(PathBuf::from)
+        .or_else(|| home_dir().map(|h| h.join(".grok")))?;
+    let auth = read_json_file(&dir.join("auth.json"))?;
     find_string(&auth, &["access_token", "accessToken", "token", "api_key", "apiKey"])
-        .map(|s| s.to_string())
+        .map(str::to_string)
 }
 
 pub fn fetch_grok() -> ServiceStatus {
-    let base = ServiceStatus {
-        id: "grok",
-        label: "Grok",
-        state: "not_connected",
-        used_percent: None,
-        secondary_used_percent: None,
-        resets_at: None,
-        secondary_resets_at: None,
-        note: Some("Grok CLI is not logged in. Install the Grok CLI and log in once.".into()),
+    let base = ServiceStatus::new("grok", "Grok", State::NotConnected);
+    let Some(token) = grok_token() else {
+        return base.with_note("Sign in to Grok Build once (run `grok login`).");
     };
-    let token = match grok_token() {
-        Some(t) => t,
-        None => return base,
-    };
-    let res = http_get_json(
+    let v = match http_get_json(
         "https://cli-chat-proxy.grok.com/v1/billing?format=credits",
         &[
             ("Authorization", format!("Bearer {token}")),
             ("x-xai-token-auth", "xai-grok-cli".to_string()),
         ],
-    );
-    match res {
-        Ok(v) => {
-            let used = v
-                .get("config")
-                .and_then(|c| c.get("creditUsagePercent"))
-                .and_then(|u| u.as_f64())
-                .or_else(|| {
-                    v.get("creditUsagePercent").and_then(|u| u.as_f64())
-                });
-            let period_end = v
-                .get("currentPeriod")
-                .and_then(|p| p.get("end"))
-                .and_then(|e| e.as_str())
-                .and_then(parse_rfc3339)
-                .or_else(|| {
-                    v.get("currentPeriod")
-                        .and_then(|p| p.get("end"))
-                        .and_then(|e| e.as_i64())
-                });
-            ServiceStatus {
-                state: if used.is_some() { "connected" } else { "unavailable" },
-                used_percent: used,
-                secondary_used_percent: None,
-                // Grok's weekly pool resets at the end of the current period.
-                resets_at: period_end,
-                secondary_resets_at: None,
-                note: if used.is_none() {
-                    Some("Grok returned an unexpected response.".into())
-                } else {
-                    None
-                },
-                ..base
-            }
+    ) {
+        Ok(v) => v,
+        Err(HttpError::Auth(_)) => {
+            return ServiceStatus { state: State::Expired, ..base }
+                .with_note("Login expired — run `grok login` again.")
         }
-        Err(e) => ServiceStatus {
-            state: "unavailable",
-            note: Some(format!("Could not reach Grok billing API ({e}).")),
-            ..base
-        },
+        Err(e) => {
+            return ServiceStatus { state: State::Unavailable, ..base }
+                .with_note(format!("Couldn't reach Grok ({}).", e.describe()))
+        }
+    };
+    let windows = parse_grok(&v);
+    if windows.is_empty() {
+        return ServiceStatus { state: State::Unavailable, ..base }
+            .with_note("Grok returned a response we don't understand yet.");
     }
+    ServiceStatus { state: State::Connected, windows, ..base }
 }
 
-// ------------------------------------------------------------------ mock
+fn parse_grok(v: &serde_json::Value) -> Vec<UsageWindow> {
+    let used = as_f64(v.get("config").and_then(|c| c.get("creditUsagePercent")))
+        .or_else(|| as_f64(v.get("creditUsagePercent")));
+    let Some(used) = used else { return Vec::new() };
+    let period = v.get("currentPeriod");
+    let start = as_timestamp(period.and_then(|p| p.get("start")));
+    let end = as_timestamp(period.and_then(|p| p.get("end")));
+    let secs = match (start, end) {
+        (Some(s), Some(e)) if e > s => Some(e - s),
+        _ => None,
+    };
+    vec![UsageWindow {
+        kind: kind_for_seconds(secs, "weekly"),
+        used_percent: used.clamp(0.0, 100.0),
+        resets_at: end,
+        window_seconds: secs,
+    }]
+}
 
-/// Demo data mirroring the numbers in the @Litx4i post, for local testing
-/// and CI smoke tests only. The shipped app never shows mock data as real.
+// ------------------------------------------------------------------- mock
+
+/// Demo data for screenshots, local testing and CI smoke tests only.
+/// Always labelled "mock" so the UI never passes it off as real.
 pub fn mock_status() -> Vec<ServiceStatus> {
     let now = now_unix();
+    let w = |kind, used, resets_in: i64, secs: i64| UsageWindow {
+        kind,
+        used_percent: used,
+        resets_at: Some(now + resets_in),
+        window_seconds: Some(secs),
+    };
+    let mk = |id, label, plan: &str, windows| ServiceStatus {
+        id,
+        label,
+        state: State::Mock,
+        plan: Some(plan.to_string()),
+        windows,
+        note: Some("Demo data".into()),
+        fetched_at: now,
+        stale: false,
+    };
     vec![
-        ServiceStatus {
-            id: "claude",
-            label: "Claude",
-            state: "mock",
-            used_percent: Some(42.0),
-            secondary_used_percent: Some(26.0),
-            resets_at: Some(now + 180),
-            secondary_resets_at: Some(now + 86400 * 3),
-            note: Some("Demo data — Claude Code is not logged in on this machine.".into()),
-        },
-        ServiceStatus {
-            id: "codex",
-            label: "Codex",
-            state: "mock",
-            used_percent: Some(37.0),
-            secondary_used_percent: Some(18.0),
-            resets_at: Some(now + 60),
-            secondary_resets_at: Some(now + 86400 * 5),
-            note: Some("Demo data — Codex CLI is not logged in on this machine.".into()),
-        },
-        ServiceStatus {
-            id: "grok",
-            label: "Grok",
-            state: "mock",
-            used_percent: Some(57.0),
-            secondary_used_percent: None,
-            resets_at: Some(now + 300),
-            secondary_resets_at: None,
-            note: Some("Demo data — Grok CLI is not logged in on this machine.".into()),
-        },
+        mk("claude", "Claude", "Max", vec![
+            w("session", 42.0, 2 * 3600 + 14 * 60, 5 * 3600),
+            w("weekly", 26.0, 3 * 86_400 + 5 * 3600, 7 * 86_400),
+        ]),
+        mk("codex", "Codex", "Plus", vec![
+            w("session", 37.0, 58 * 60, 5 * 3600),
+            w("weekly", 18.0, 5 * 86_400, 7 * 86_400),
+        ]),
+        mk("grok", "Grok", "SuperGrok", vec![w("weekly", 57.0, 4 * 86_400 + 2 * 3600, 7 * 86_400)]),
     ]
 }
 
-/// Fetch all three services. `mock` forces demo data.
+pub fn fetch_one(id: &str) -> Option<ServiceStatus> {
+    match id {
+        "claude" => Some(fetch_claude()),
+        "codex" => Some(fetch_codex()),
+        "grok" => Some(fetch_grok()),
+        _ => None,
+    }
+}
+
+pub const IDS: [&str; 3] = ["claude", "codex", "grok"];
+
+/// Fetch every service in parallel. `mock` forces demo data.
 pub fn fetch_all(mock: bool) -> Vec<ServiceStatus> {
     if mock {
         return mock_status();
     }
-    vec![fetch_claude(), fetch_codex(), fetch_grok()]
+    std::thread::scope(|s| {
+        let handles: Vec<_> = IDS.iter().map(|id| s.spawn(move || fetch_one(id))).collect();
+        handles
+            .into_iter()
+            .filter_map(|h| h.join().ok().flatten())
+            .collect()
+    })
 }
+
+// ------------------------------------------------------------------ tests
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
-    fn rfc3339_parses() {
-        // 2026-02-08T04:59:59Z
-        assert_eq!(parse_rfc3339("2026-02-08T04:59:59Z"), Some(1770526799));
+    fn rfc3339_utc() {
+        assert_eq!(parse_rfc3339("2026-02-08T04:59:59Z"), Some(1_770_526_799));
     }
 
     #[test]
-    fn mock_status_has_three_services() {
+    fn rfc3339_offsets_and_fractions() {
+        assert_eq!(parse_rfc3339("2026-02-08T12:59:59.481+08:00"), Some(1_770_526_799));
+        assert_eq!(parse_rfc3339("2026-02-07T23:59:59-05:00"), Some(1_770_526_799));
+        assert_eq!(parse_rfc3339("2026-02-08T04:59:59+00:00"), Some(1_770_526_799));
+        assert_eq!(parse_rfc3339("nonsense"), None);
+    }
+
+    #[test]
+    fn claude_payload() {
+        let v = json!({
+            "five_hour": {"utilization": 42.0, "resets_at": "2026-02-08T04:59:59+00:00"},
+            "seven_day": {"utilization": 26, "resets_at": "2026-02-10T00:00:00Z"},
+            "seven_day_opus": null,
+            "seven_day_sonnet": {"utilization": 0, "resets_at": null}
+        });
+        let w = parse_claude(&v);
+        assert_eq!(w.len(), 2);
+        assert_eq!(w[0].kind, "session");
+        assert_eq!(w[0].resets_at, Some(1_770_526_799));
+        assert_eq!(w[1].kind, "weekly");
+        assert_eq!(w[1].used_percent, 26.0);
+    }
+
+    #[test]
+    fn codex_payload() {
+        let v = json!({
+            "plan_type": "plus",
+            "rate_limit": {
+                "primary_window": {"used_percent": 37, "limit_window_seconds": 18000, "reset_after_seconds": 600},
+                "secondary_window": {"used_percent": 18, "limit_window_seconds": 604800, "reset_at": 1770526799}
+            }
+        });
+        let w = parse_codex(&v, 1000);
+        assert_eq!(w.len(), 2);
+        assert_eq!(w[0].kind, "session");
+        assert_eq!(w[0].resets_at, Some(1600));
+        assert_eq!(w[1].kind, "weekly");
+        assert_eq!(w[1].resets_at, Some(1_770_526_799));
+    }
+
+    #[test]
+    fn grok_payload() {
+        let v = json!({
+            "config": {"creditUsagePercent": 57.5},
+            "currentPeriod": {"start": "2026-02-01T00:00:00Z", "end": "2026-02-08T00:00:00Z"}
+        });
+        let w = parse_grok(&v);
+        assert_eq!(w.len(), 1);
+        assert_eq!(w[0].kind, "weekly");
+        assert_eq!(w[0].used_percent, 57.5);
+        assert!(parse_grok(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn mock_is_labelled_and_complete() {
         let all = mock_status();
-        assert_eq!(all.len(), 3);
-        assert_eq!(all[0].id, "claude");
-        assert_eq!(all[1].id, "codex");
-        assert_eq!(all[2].id, "grok");
+        assert_eq!(all.iter().map(|s| s.id).collect::<Vec<_>>(), IDS);
         for s in &all {
-            assert!(s.used_percent.is_some());
-            assert!(s.resets_at.is_some());
+            assert_eq!(s.state, State::Mock);
+            assert!(s.has_numbers());
+            assert!(s.peak_used().is_some());
         }
     }
 
     #[test]
     fn find_string_walks_nested_json() {
-        let v: serde_json::Value =
-            serde_json::from_str(r#"{"tokens":{"access_token":"tok123"}}"#).unwrap();
+        let v = json!({"a": {"tokens": {"access_token": "tok123"}}});
         assert_eq!(find_string(&v, &["access_token"]), Some("tok123"));
+    }
+
+    #[test]
+    fn state_serialises_snake_case() {
+        assert_eq!(serde_json::to_string(&State::NotConnected).unwrap(), "\"not_connected\"");
     }
 }

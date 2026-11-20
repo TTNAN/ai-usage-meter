@@ -1,129 +1,131 @@
-中文 | [中文](./README.md)
+<div align="center">
+
+<img src="assets/icons/app-icon-512.png" width="112" alt="AI Usage Meter" />
 
 # AI Usage Meter
 
-> A small menu-bar / system-tray window, styled like a black Dock, that shows your Claude, Codex, and Grok usage at a glance.
+**Your Claude, Codex and Grok limits — live in the menu bar.**
 
-![AI Usage Meter](docs/screenshot.png)
+[中文](./README.md) · English
 
-## What it is
+[![Build](https://github.com/TTNAN/ai-usage-meter/actions/workflows/build.yml/badge.svg)](https://github.com/TTNAN/ai-usage-meter/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/TTNAN/ai-usage-meter?include_prereleases&color=6e9bff)](https://github.com/TTNAN/ai-usage-meter/releases)
+![Platforms](https://img.shields.io/badge/macOS%20%7C%20Windows-111?logo=tauri&logoColor=white)
+[![License](https://img.shields.io/badge/license-MIT-b38cff)](./LICENSE)
 
-AI Usage Meter is a Tauri v2 app (Rust + plain HTML/CSS/JS, no bundler). It lives in the menu bar on macOS and in the system tray on Windows.
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/hero-light.png" />
+  <img src="docs/hero.png" alt="AI Usage Meter menu-bar popover" width="880" />
+</picture>
 
-The window holds three cards:
+</div>
 
-| Service | Icon colour | Shows |
-| --- | --- | --- |
-| Claude | Orange `#D97757` | % used, % left, progress bar, reset countdown |
-| Codex | Blue `#3B82F6` | % used, % left, progress bar, reset countdown |
-| Grok | Purple `#A855F7` | % used, % left, progress bar, reset countdown |
+Tired of hitting "usage limit reached" mid-task? AI Usage Meter puts every 5-hour window, weekly limit and reset countdown for all three services in your menu bar. **No browser tabs, no pasted cookies, no servers.**
 
-- The reset countdown ticks every second.
-- The tray tooltip shows the usage summary at a glance, so you can see it without opening the window.
-- Click the tray icon to toggle the window.
+## Highlights
 
-## Sync: auto-sync only
+- **See the tightest limit first** — three rings and one big number tell you which quota runs out first and when it resets.
+- **The icon is the gauge** — three tiny battery bars show what's left of each quota; on macOS you can show the percentage right next to it.
+- **Every window, not just one** — Claude 5-hour / weekly (plus separate Opus and Sonnet limits), Codex 5-hour / weekly, Grok's billing period, each with its own countdown.
+- **Plan aware** — picks up Max, Pro, Plus, SuperGrok and friends.
+- **Zero setup** — reuses the logins of Claude Code, Codex CLI and Grok Build. Install and go.
+- **Feels native** — real macOS popover material, follows light and dark mode, opens from the icon and tucks away when you click elsewhere; a tray flyout on Windows.
+- **English and 中文** — follows your system language, switchable in Settings.
+- **Calm and honest** — gentle background polling, rate-limited manual refresh; one failed request keeps the last reading (clearly marked) and it never makes numbers up.
+- **Tiny** — Tauri v2 and plain HTML/CSS/JS. No Node, no bundler.
 
-v1 only does auto-sync: it reads the already-logged-in state of the three official CLIs on your machine and queries each provider's API for usage.
-
-There is no manual-entry main flow. If you have not logged in to a CLI, the matching card shows "Not connected" (this is what Grok shows when the Grok CLI is not logged in); if none of the three is logged in, the UI shows a DEMO DATA badge, using the post's 37 / 42 / 57% figures only as demo data, not real usage.
-
-## How each service is checked
-
-| Service | Endpoint | Credential source | Poll interval |
-| --- | --- | --- | --- |
-| Claude | `GET https://api.anthropic.com/api/oauth/usage` | Claude Code OAuth token from `~/.claude/.credentials.json`, header `anthropic-beta: oauth-2025-04-20` | >= 5 min |
-| Codex | `GET https://chatgpt.com/backend-api/wham/usage` | Codex OAuth token from `~/.codex/auth.json`, header `chatgpt-account-id` | 60s |
-| Grok | `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` | Token from `~/.grok/auth.json`, header `x-xai-token-auth: xai-grok-cli` | 5–10 min |
-
-- Claude returns `five_hour.utilization`, `resets_at`, and `seven_day`.
-- Codex returns `primary_window` (5h) and `secondary_window` (7d) `used_percent` plus `reset_at`.
-- Grok returns `config.creditUsagePercent` (used) and `currentPeriod` (weekly billing period).
-
-> ⚠️ The Codex card shows **Codex CLI quota, NOT ChatGPT web-chat quota**. They are not the same quota — do not confuse them.
-
-## Auth and privacy
-
-- v1 ONLY reuses the official CLIs' logged-in state: install Claude Code, Codex CLI, and Grok CLI, and log in once each.
-- No passwords, no pasted cookies.
-- Tokens are read from disk at call time, never written anywhere by the app, and never uploaded.
-- Read-only GET requests only. If an endpoint fails, the card shows "Unavailable" — never fake numbers.
-- Local only: no server, no analytics, no upload.
-
-## Risks
-
-Please understand these before using it:
-
-- All three are unofficial / internal endpoints; no official subscription-quota API exists. They may change at any time and may require re-login.
-- Data on each provider's settings page is authoritative.
-- Low-frequency read-only polling is lower risk, but not zero risk. No public case was found of accounts banned for usage polling alone — but we do NOT promise you will never be banned.
+<p align="center"><img src="docs/states.png" alt="Chinese UI, settings, first run and light mode" width="880" /></p>
 
 ## Install
 
-### macOS
+Grab the latest build from [Releases](https://github.com/TTNAN/ai-usage-meter/releases):
 
-Download the `.dmg` from Releases. v1 is unsigned (no paid Apple Developer notarization), so on first launch: right-click the app > Open, or run:
+| Platform | File | Notes |
+| --- | --- | --- |
+| macOS (Apple silicon + Intel) | `.dmg` | Drag to Applications. Not notarised yet: right-click → Open the first time, or run the command below |
+| Windows 10 / 11 | `.exe` or `.msi` | Per-user install, no admin needed |
 
 ```bash
-xattr -d com.apple.quarantine /Applications/AI\ Usage\ Meter.app
+xattr -d com.apple.quarantine "/Applications/AI Usage Meter.app"
 ```
 
-### Windows
+Then sign in to whichever CLIs you use (the rest just show "Not connected"):
 
-Download the `.exe` from Releases and double-click it.
+| Service | Install | Sign in |
+| --- | --- | --- |
+| Claude | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `claude` |
+| Codex | [Codex CLI](https://github.com/openai/codex) | `codex login` |
+| Grok | [Grok Build](https://docs.x.ai/build/overview) | `grok login` |
 
-### Prerequisites
+## Shortcuts
 
-Install and log in to Claude Code, Codex CLI, and Grok CLI first (see "Auth and privacy" above).
+| Keys | Action |
+| --- | --- |
+| `⌘R` / `Ctrl R` | Refresh |
+| `⌘,` | Settings |
+| `Esc` | Close the popover |
+| `⌘Q` / `Ctrl Q` | Quit |
 
-## Build from source
+## How it works
 
-Node is not needed; there are no npm dependencies. Install Rust stable, then:
+None of the three services offers a public "subscription quota" API, so AI Usage Meter reads the same endpoints their official CLIs use, with the login those CLIs already saved on your machine:
+
+| Service | Endpoint | Credential | Polling |
+| --- | --- | --- | --- |
+| Claude | `GET api.anthropic.com/api/oauth/usage` | macOS Keychain `Claude Code-credentials`, or `~/.claude/.credentials.json` | 5 min |
+| Codex | `GET chatgpt.com/backend-api/wham/usage` | `~/.codex/auth.json` (`$CODEX_HOME` respected) | 1 min |
+| Grok | `GET cli-chat-proxy.grok.com/v1/billing` | `~/.grok/auth.json` (`$GROK_HOME` respected) | 5 min |
+
+> [!NOTE]
+> The Codex row shows your **Codex** quota, not ChatGPT web-chat limits. They are counted separately.
+
+## Privacy
+
+- Credentials are read at request time and sent only to the service they belong to. Never stored, never uploaded.
+- Read-only `GET` requests. Your accounts and CLI config files are never modified.
+- No servers, no analytics, no telemetry. It's a few hundred lines — read [`providers.rs`](src-tauri/src/providers.rs).
+
+## Caveats
+
+These are unofficial, internal endpoints and can change at any time. If one does, that row says it can't reach the service instead of showing a wrong number; each service's own settings page is the source of truth. Low-frequency read-only polling is low risk and there are no public reports of bans from it, but we can't promise there never will be.
+
+## Contributing
+
+You can work on the UI without Rust: serve `src/` with any static server and it runs as a preview with demo data.
+
+```bash
+python3 -m http.server -d src 8000
+# http://localhost:8000/?state=empty   first run
+# http://localhost:8000/?view=settings settings
+```
+
+The desktop app needs Rust stable:
 
 ```bash
 cargo install tauri-cli --version "^2"
-cargo tauri build
+cargo tauri dev                    # develop
+cargo tauri build                  # package
+cd src-tauri && cargo test         # unit tests
+AI_USAGE_METER_MOCK=1 cargo tauri dev   # run with demo data
 ```
 
-Smoke test:
+Want another service (Gemini CLI, Cursor, Copilot…)? Open an [issue](https://github.com/TTNAN/ai-usage-meter/issues) or a PR — each service is a single function in `providers.rs`.
 
-```bash
-AI_USAGE_METER_MOCK=1 ./src-tauri/target/debug/ai-usage-meter --smoke-test
-```
+## Roadmap
 
-This prints JSON and exits 0.
+- [ ] Notifications when a limit is about to run out
+- [ ] More services: Gemini CLI, GitHub Copilot, Cursor
+- [ ] Usage history sparkline
+- [ ] Linux tray
+- [ ] Signed and notarised macOS builds
 
-## FAQ
+## Thanks
 
-**Is the Codex figure my ChatGPT web-chat quota?**
+- [@Litx4i](https://x.com/Litx4i/status/2123400444458488080) — the original idea
+- [Quota](https://github.com/josephbergvinson/quota) — the reuse-the-CLI-login approach
 
-No. It is the Codex CLI quota, not the ChatGPT web-chat quota.
+If it saved you from one "limit reached" surprise, a ⭐️ helps it keep getting better.
 
-**What if a card shows "Unavailable"?**
+## License and trademarks
 
-That means the request to that endpoint failed — the endpoint may have changed, or the login may have expired. First confirm you are logged in via the official CLI, then check usage on the provider's settings page. The app will not substitute fake numbers.
-
-**What if a card shows "Not connected"?**
-
-That means no login credential for that CLI was found on this machine. Install and log in to the corresponding official CLI.
-
-**Will my tokens be uploaded?**
-
-No. Tokens are read from disk at call time only, never written anywhere, and never uploaded. The app runs locally with no server.
-
-**What if the usage looks wrong?**
-
-Trust the data on each provider's settings page. This project uses unofficial endpoints, which may change at any time.
-
-## License
-
-MIT
-
-## Acknowledgements
-
-- [@Litx4i](https://x.com/Litx4i) — the inspiration for this project. Original post: https://x.com/Litx4i/status/2123400444458488080
-- The Quota project (https://github.com/josephbergvinson/quota) — the pattern for reusing CLI login state.
-
-## Trademark
-
-Claude is a trademark of Anthropic. ChatGPT / OpenAI are trademarks of OpenAI. Grok / xAI are trademarks of xAI. All brand icons and trademarks used in this project belong to their respective owners, are used only to identify the service each card refers to, and do not imply endorsement by any of them.
+[MIT](./LICENSE). Claude is a trademark of Anthropic; OpenAI / ChatGPT / Codex are trademarks of OpenAI; Grok / xAI are trademarks of xAI. Brand marks only identify each service and imply no endorsement. Screenshots use demo data.

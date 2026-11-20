@@ -20,3 +20,6 @@ Desktop.ini
 .env
 *.pem
 *.key
+
+# ---> Tauri generated schemas
+src-tauri/gen/

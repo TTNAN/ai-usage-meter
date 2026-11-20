@@ -3,23 +3,107 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="dark light" />
 <title>AI Usage Meter</title>
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="header">
-    <span class="header-title">AI Usage</span>
-    <span class="header-live"><span class="live-dot"></span>Live</span>
-  </div>
-  <div class="dock" id="dock">
-    <div class="loading">Loading usage…</div>
-  </div>
-  <div class="footer">
-    <span id="updated"></span>
-    <span class="spacer"></span>
-    <button id="refresh" type="button">Refresh</button>
-    <button id="about" type="button">About</button>
-  </div>
+  <main class="panel" id="panel">
+    <!-- Header -->
+    <header class="top">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="1.5" y="6" width="3" height="8.5" rx="1.5" fill="var(--c-claude)" />
+          <rect x="6.5" y="3.5" width="3" height="11" rx="1.5" fill="var(--c-codex)" />
+          <rect x="11.5" y="1.5" width="3" height="13" rx="1.5" fill="var(--c-grok)" />
+        </svg>
+        <span class="brand-name" data-i18n="title">AI Usage</span>
+      </div>
+      <div class="top-actions">
+        <span class="updated" id="updated"></span>
+        <button class="icon-btn" id="refresh" type="button" data-i18n-title="refresh">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.2 8a5.2 5.2 0 1 1-1.52-3.68M13.2 2.6v2.8h-2.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="icon-btn" id="settings-btn" type="button" data-i18n-title="settings">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5h6.5M12 5h1.5M2.5 11H4M7 11h6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10.5" cy="5" r="1.6" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="5.5" cy="11" r="1.6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="views" id="views">
+      <!-- Usage view -->
+      <section class="view view-usage" id="view-usage">
+        <div class="hero" id="hero">
+          <svg class="rings" id="rings" viewBox="0 0 120 120" aria-hidden="true"></svg>
+          <div class="hero-copy" id="hero-copy"></div>
+        </div>
+        <ul class="services" id="services"></ul>
+      </section>
+
+      <!-- Settings view -->
+      <section class="view view-settings" id="view-settings" hidden>
+        <button class="back" id="back" type="button">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span data-i18n="settings">Settings</span>
+        </button>
+        <div class="group">
+          <div class="setting">
+            <span data-i18n="showAs">Show numbers as</span>
+            <div class="seg" data-setting="mode">
+              <button type="button" data-value="left" data-i18n="optLeft">Left</button>
+              <button type="button" data-value="used" data-i18n="optUsed">Used</button>
+            </div>
+          </div>
+          <div class="setting" id="setting-tray">
+            <span data-i18n="menuBar">Menu bar</span>
+            <div class="seg" data-setting="tray">
+              <button type="button" data-value="icon" data-i18n="optIcon">Icon</button>
+              <button type="button" data-value="percent" data-i18n="optPercent">Icon + %</button>
+            </div>
+          </div>
+          <div class="setting">
+            <span data-i18n="language">Language</span>
+            <div class="seg" data-setting="lang">
+              <button type="button" data-value="auto" data-i18n="optAuto">Auto</button>
+              <button type="button" data-value="zh">中文</button>
+              <button type="button" data-value="en">EN</button>
+            </div>
+          </div>
+          <label class="setting">
+            <span data-i18n="launchAtLogin">Launch at login</span>
+            <input type="checkbox" class="switch" id="autostart" />
+          </label>
+        </div>
+        <div class="group">
+          <button class="link-row" type="button" id="star">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.6l-3.8 2 .7-4.3-3.1-3 4.3-.6z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+            <span data-i18n="star">Star on GitHub</span>
+            <span class="chev">↗</span>
+          </button>
+          <button class="link-row" type="button" id="issues">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 4.8v3.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="10.9" r=".85" fill="currentColor"/></svg>
+            <span data-i18n="report">Report an issue</span>
+            <span class="chev">↗</span>
+          </button>
+          <button class="link-row danger" type="button" id="quit">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v5.5M4.6 4.2a5.2 5.2 0 1 0 6.8 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            <span data-i18n="quit">Quit AI Usage Meter</span>
+            <span class="kbd">⌘Q</span>
+          </button>
+        </div>
+        <p class="fineprint" data-i18n="privacy">Reads the logins your official CLIs already saved. Read-only requests, straight to each service. No servers, no analytics.</p>
+      </section>
+    </div>
+
+    <footer class="bottom">
+      <span class="privacy-chip">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.2" y="7" width="9.6" height="6.8" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.4 7V5.2a2.6 2.6 0 0 1 5.2 0V7" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+        <span data-i18n="local">On-device · read-only</span>
+      </span>
+      <span class="demo-chip" id="demo-chip" hidden data-i18n="demo">Demo data</span>
+      <span class="version" id="version"></span>
+    </footer>
+  </main>
   <script src="main.js"></script>
 </body>
 </html>

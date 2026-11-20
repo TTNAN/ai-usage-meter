@@ -1,39 +1,27 @@
 # Icons
 
-All service icons in this project are the **official brand marks**, used
-as-is for identification only. The app icon and tray icon are original
-designs by this project (see below).
+## Service marks (official, used for identification only)
 
-## Service icons (official)
-
-| File | Brand | Exact source |
+| File | Brand | Source |
 | --- | --- | --- |
-| `claude.svg` / `claude.png` | Claude (Anthropic) | Simple Icons — https://cdn.simpleicons.org/claude (SVG, fill `#D97757`), rendered white on an orange `#D97757` tile |
-| `openai.svg` / `codex.svg` / `codex.png` | OpenAI / ChatGPT (OpenAI) | Simple Icons v13 — https://cdn.jsdelivr.net/npm/simple-icons@13/icons/openai.svg (the official OpenAI knot). Simple Icons no longer ships an OpenAI icon in its latest release, so v13 is used. The Codex card uses this OpenAI mark with the text label "Codex" underneath; it is not relabelled as a different brand |
-| `grok.png` | Grok / xAI | Official x.ai favicon — https://x.ai/favicon.ico (48×48, black X on white). Simple Icons has no grok/xai icon in any release, so the official favicon is used instead. The white square background was made transparent and the mark recoloured white for the dark tile, so it reads correctly on the black Dock-style background; the mark shape itself is unchanged |
+| `claude.svg` | Claude (Anthropic) | Simple Icons — https://cdn.simpleicons.org/claude |
+| `openai.svg` / `codex.svg` | OpenAI | Simple Icons v13 — https://cdn.jsdelivr.net/npm/simple-icons@13/icons/openai.svg |
+| `grok.png` | Grok / xAI | Official x.ai favicon, background made transparent, mark recoloured white |
 
-The `*_with_bar.png` variants are the same tiles with the coloured
-progress bar from the original X post underneath (orange / blue / purple,
-~40% fill in the asset files; the app draws the live value at runtime).
+In the app (`src/icons/`) each mark is used as a CSS mask and drawn white on
+a small tile, so the shapes are unchanged.
 
 ## App icon and tray icon (original, this project)
 
-- `app-icon.svg` / `app-icon-512.png` / `app-icon-1024.png` — dark rounded
-  square with three ascending gauge bars (orange / blue / purple) and a `%`.
-  Original design, drawn for this project.
-- `tray-icon.png` / `tray-icon-16.png` — monochrome white gauge bars on
-  transparent, for light/dark menu bars.
-- `src-tauri/icons/icon.icns` was generated from `app-icon-1024.png` with a
-  small Python script (PNG-based icns elements); `icon.ico` is the
-  multi-size Windows icon built from the same PNGs.
+- `app-icon.svg` / `app-icon-512.png` / `app-icon-1024.png` — graphite
+  squircle with three rounded bars in the service accents. The PNGs and
+  `src-tauri/icons/*` (icns, ico, png) are rendered from the same design.
+- The menu-bar / tray icon is **drawn at runtime** (`src-tauri/src/tray_icon.rs`):
+  three tiny bars filled to the share of each quota that is left. On macOS it
+  is a template image, so it follows light and dark menu bars.
 
 ## Trademark
 
-Claude is a trademark of Anthropic. ChatGPT / OpenAI are trademarks of
-OpenAI. Grok / xAI are trademarks of xAI. All brand icons and trademarks
-belong to their respective owners, are used here only to identify the
-service each card refers to, and do not imply endorsement by any of them.
-
-Design inspired by the X post by
-[@Litx4i](https://x.com/Litx4i/status/2123400444458488080) showing the
-black Dock with usage-meter bars.
+Claude is a trademark of Anthropic. ChatGPT / OpenAI / Codex are trademarks of
+OpenAI. Grok / xAI are trademarks of xAI. Brand marks are used only to
+identify the service each row refers to and imply no endorsement.
