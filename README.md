@@ -130,6 +130,10 @@ MIT
 - [@Litx4i](https://x.com/Litx4i) —— 这个项目的灵感来源，原帖：https://x.com/Litx4i/status/2123400444458488080
 - Quota 项目（https://github.com/josephbergvinson/quota）—— 复用 CLI 登录状态这一做法的参考模式。
 
+## 商标声明
+
+Claude 是 Anthropic 的商标，ChatGPT / OpenAI 是 OpenAI 的商标，Grok / xAI 是 xAI 的商标。本项目中使用的品牌图标与商标均属于各自权利人，仅用于标识每张卡片对应的服务，不代表任何一方的背书。
+
 ---
 
 # AI Usage Meter
@@ -263,3 +267,7 @@ MIT
 
 - [@Litx4i](https://x.com/Litx4i) — the inspiration for this project. Original post: https://x.com/Litx4i/status/2123400444458488080
 - The Quota project (https://github.com/josephbergvinson/quota) — the pattern for reusing CLI login state.
+
+## Trademark
+
+Claude is a trademark of Anthropic. ChatGPT / OpenAI are trademarks of OpenAI. Grok / xAI are trademarks of xAI. All brand icons and trademarks used in this project belong to their respective owners, are used only to identify the service each card refers to, and do not imply endorsement by any of them.

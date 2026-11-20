@@ -1,77 +1,39 @@
-# ai-usage-meter — Icons
+# Icons
 
-Original icon assets for the open-source macOS/Windows tray app
-**ai-usage-meter**. Inspired by an X post by [@Litx4i](https://x.com/Litx4i)
-showing a black Dock with AI icons turned into usage meters (a coloured
-progress bar under each icon).
+All service icons in this project are the **official brand marks**, used
+as-is for identification only. The app icon and tray icon are original
+designs by this project (see below).
 
-## Originality note
+## Service icons (official)
 
-All marks in this folder are **original simplified designs** drawn for this
-project. They are not copies of official brand logos, and they do not reuse
-any official logo artwork:
-
-- **Claude** — a plain white open "C" arc with a spark dot on an
-  orange (`#D97757`) rounded square. Not the official Claude logo.
-- **Codex** — two interlocking dark rings with a centre dot on a white
-  rounded square. Not any official ChatGPT / Codex logo.
-- **Grok** — a purple (`#A855F7`) open "G" arc with a crossbar on a black
-  rounded square. Not the official Grok logo.
-- **App icon** — a dark rounded square with three ascending gauge bars
-  (orange / blue / purple) on a track, plus a "%" readout.
-
-Colours used: Claude orange-brown `#D97757`, Codex blue `#3B82F6`,
-Grok purple `#A855F7`, app background `#0A0A0A`.
-
-## Files
-
-| File | Size | What it is |
+| File | Brand | Exact source |
 | --- | --- | --- |
-| `app-icon.svg` | 1024×1024 (vector) | App-icon concept: dark rounded square, three gauge bars, "%" |
-| `app-icon-1024.png` | 1024×1024 | App icon, largest render |
-| `app-icon-512.png` | 512×512 | App icon |
-| `app-icon-256.png` | 256×256 | App icon |
-| `app-icon-128.png` | 128×128 | App icon |
-| `app-icon-64.png` | 64×64 | App icon |
-| `app-icon-32.png` | 32×32 | App icon, smallest render (bars + "%" still read) |
-| `app.ico` | 16/32/48/64/128/256 | Windows icon, multi-size, built from the PNGs with Pillow |
-| `tray-icon.png` | 32×32 | Tray icon: monochrome white gauge bars on transparent |
-| `tray-icon-16.png` | 16×16 | Tray icon, small size |
-| `claude.svg` / `claude.png` | 128×128 | Claude service mark (icon only) |
-| `codex.svg` / `codex.png` | 128×128 | Codex service mark (icon only) |
-| `grok.svg` / `grok.png` | 128×128 | Grok service mark (icon only) |
-| `claude_with_bar.png` | 128×160 | Claude icon + usage bar underneath, ~40% filled, orange |
-| `codex_with_bar.png` | 128×160 | Codex icon + usage bar underneath, ~40% filled, blue |
-| `grok_with_bar.png` | 128×160 | Grok icon + usage bar underneath, ~40% filled, purple |
+| `claude.svg` / `claude.png` | Claude (Anthropic) | Simple Icons — https://cdn.simpleicons.org/claude (SVG, fill `#D97757`), rendered white on an orange `#D97757` tile |
+| `openai.svg` / `codex.svg` / `codex.png` | OpenAI / ChatGPT (OpenAI) | Simple Icons v13 — https://cdn.jsdelivr.net/npm/simple-icons@13/icons/openai.svg (the official OpenAI knot). Simple Icons no longer ships an OpenAI icon in its latest release, so v13 is used. The Codex card uses this OpenAI mark with the text label "Codex" underneath; it is not relabelled as a different brand |
+| `grok.png` | Grok / xAI | Official x.ai favicon — https://x.ai/favicon.ico (48×48, black X on white). Simple Icons has no grok/xai icon in any release, so the official favicon is used instead. The white square background was made transparent and the mark recoloured white for the dark tile, so it reads correctly on the black Dock-style background; the mark shape itself is unchanged |
 
-Notes on the split:
+The `*_with_bar.png` variants are the same tiles with the coloured
+progress bar from the original X post underneath (orange / blue / purple,
+~40% fill in the asset files; the app draws the live value at runtime).
 
-- The base service PNGs (`claude.png`, `codex.png`, `grok.png`) are the
-  128×128 square marks on their own, for use as Dock / launcher icons.
-- The `*_with_bar.png` variants are 128×160: the same 128×128 mark on top
-  with a dark track and a coloured fill bar underneath at ~40%, i.e. the
-  progress-bar treatment from the post. The app should redraw the fill
-  width at runtime to reflect live usage; 40% is just the static example.
-- The tray icons are monochrome white-on-transparent so they stay legible
-  on both light and dark menu bars / system trays.
+## App icon and tray icon (original, this project)
 
-## macOS .icns
+- `app-icon.svg` / `app-icon-512.png` / `app-icon-1024.png` — dark rounded
+  square with three ascending gauge bars (orange / blue / purple) and a `%`.
+  Original design, drawn for this project.
+- `tray-icon.png` / `tray-icon-16.png` — monochrome white gauge bars on
+  transparent, for light/dark menu bars.
+- `src-tauri/icons/icon.icns` was generated from `app-icon-1024.png` with a
+  small Python script (PNG-based icns elements); `icon.ico` is the
+  multi-size Windows icon built from the same PNGs.
 
-`app.icns` is **not** included: building one needs macOS `iconutil`
-(or `png2icns`) from an `.iconset` of the PNGs above. On a Mac:
+## Trademark
 
-```sh
-mkdir AppIcon.iconset
-# copy the PNGs we have (32/64/128/256/512/1024) as icon_<size>x<size>.png;
-# make the 16px entry by downscaling app-icon-32.png, and @2x entries
-# from the next size up, e.g.:
-cp app-icon-32.png  AppIcon.iconset/icon_16x16@2x.png
-cp app-icon-128.png AppIcon.iconset/icon_128x128.png
-# ... repeat for each size ...
-iconutil -c icns AppIcon.iconset -o app.icns
-```
+Claude is a trademark of Anthropic. ChatGPT / OpenAI are trademarks of
+OpenAI. Grok / xAI are trademarks of xAI. All brand icons and trademarks
+belong to their respective owners, are used here only to identify the
+service each card refers to, and do not imply endorsement by any of them.
 
-## Regenerating
-
-`generate.py` (Pillow) redraws every PNG and the `.ico` from the same
-design; the SVGs are hand-written text and match the PNG designs.
+Design inspired by the X post by
+[@Litx4i](https://x.com/Litx4i/status/2123400444458488080) showing the
+black Dock with usage-meter bars.
