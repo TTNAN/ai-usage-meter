@@ -6,14 +6,6 @@ English | [English](./README_EN.md)
 
 ![AI Usage Meter](docs/screenshot.png)
 
-## 灵感来源
-
-2026 年 11 月 19 日，[@Litx4i](https://x.com/Litx4i) 在 X 上发了一条帖子：「为什么 ai 软件图标不能这样设计呢」，配了一段 GIF：一个黑色 Dock 里，三个 AI 图标本身就是用量表。
-
-原帖：https://x.com/Litx4i/status/2123400444458488080
-
-这个项目就是把那个想法做成真的：一个小窗口，三个图标，三条用量进度条。
-
 ## 它是什么
 
 AI Usage Meter 是一个 Tauri v2 应用（Rust + 原生 HTML/CSS/JS，无打包器），macOS 上常驻菜单栏，Windows 上常驻系统托盘。
