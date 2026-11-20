@@ -61,20 +61,20 @@ function render() {
       } else if (s.state === "unavailable") {
         stateHtml = `<div class="state warn">${escapeHtml(s.note || "Unavailable")}</div>`;
       } else if (s.state === "mock") {
-        stateHtml = `<div><span class="mock-badge">DEMO DATA</span></div>`;
+        stateHtml = `<div class="demo-tag">Demo data</div>`;
       }
       const pctHtml =
         used == null
-          ? `<div class="pct">—</div>`
-          : `<div class="pct">${used.toFixed(0)}% <small>used · ${remaining.toFixed(0)}% left</small></div>`;
+          ? `<div class="pct"><span class="pct-num">—</span></div>`
+          : `<div class="pct"><span class="pct-num">${used.toFixed(0)}%</span><span class="pct-sub">used · ${remaining.toFixed(0)}% left</span></div>`;
       const barHtml =
         used == null
-          ? `<div class="bar"><div style="width:0%;background:${color}"></div></div>`
-          : `<div class="bar"><div style="width:${used}%;background:${color}"></div></div>`;
+          ? `<div class="bar"><div style="width:0%"></div></div>`
+          : `<div class="bar"><div style="width:${used}%;background:linear-gradient(90deg, ${color}b3, ${color});box-shadow:0 0 10px ${color}59"></div></div>`;
       const cdHtml =
         s.state === "connected" || s.state === "mock"
-          ? `<div class="countdown" style="color:${color}">${fmtCountdown(resetIn)} <span style="color:#999;font-weight:400">· ${fmtReset(resetIn)}</span></div>`
-          : `<div class="countdown" style="color:#888">—</div>`;
+          ? `<div class="countdown"><span class="cd-time" style="color:${color}">${fmtCountdown(resetIn)}</span> <span class="cd-label">· ${fmtReset(resetIn)}</span></div>`
+          : `<div class="countdown"><span class="cd-time" style="color:#8e8e96">—</span></div>`;
       return `<div class="card ${remaining != null && remaining <= 15 ? "low" : ""}">
         <img class="icon" src="${s.id}.png" alt="${escapeHtml(s.label)}" />
         <div class="name">${escapeHtml(s.label)}</div>
