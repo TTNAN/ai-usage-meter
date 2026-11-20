@@ -1,5 +1,5 @@
 //! AI Usage Meter — a menu-bar (macOS) / system-tray (Windows) popover that
-//! shows how much Claude, Codex and Grok quota you have left.
+//! shows how much Claude, ChatGPT (Codex) and Grok quota you have left.
 //!
 //! * `providers` talks to each service (read-only, reusing CLI logins).
 //! * `tray_icon` draws the live three-bar icon.
@@ -9,9 +9,10 @@
 
 mod providers;
 mod tray_icon;
+mod web;
 
 use providers::{ServiceStatus, State as SvcState};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -51,7 +52,16 @@ fn now_ms() -> i64 {
 
 #[derive(Default)]
 struct AppState {
+    /// What the popover shows: the CLI result merged with the web result.
     cache: Mutex<Vec<ServiceStatus>>,
+    /// Latest result per service from the CLI logins.
+    cli: Mutex<HashMap<&'static str, ServiceStatus>>,
+    /// Latest result per service from the in-app web sign-in.
+    web: Mutex<HashMap<&'static str, ServiceStatus>>,
+    web_logins: Mutex<HashSet<String>>,
+    web_last_poll: Mutex<HashMap<&'static str, i64>>,
+    web_last_report: Mutex<HashMap<&'static str, i64>>,
+    web_use_home: Mutex<HashSet<&'static str>>,
     last_fetch: Mutex<HashMap<&'static str, i64>>,
     /// Tray icon rectangle (physical px) from the last click, for anchoring.
     anchor: Mutex<Option<(f64, f64, f64, f64)>>,
@@ -74,14 +84,14 @@ fn fetch_due(state: &AppState, force: bool) -> Vec<ServiceStatus> {
 
     let now = providers::now_unix();
     let due: Vec<&'static str> = {
-        let cache = state.cache.lock().unwrap();
+        let cli = state.cli.lock().unwrap();
         let last = state.last_fetch.lock().unwrap();
         providers::IDS
             .iter()
             .copied()
             .filter(|id| {
                 let since = now - last.get(id).copied().unwrap_or(0);
-                let cached = cache.iter().any(|s| s.id == *id);
+                let cached = cli.contains_key(id);
                 !cached || since >= if force { MANUAL_FLOOR_SECS } else { poll_interval_secs(id) }
             })
             .collect()
@@ -99,12 +109,12 @@ fn fetch_due(state: &AppState, force: bool) -> Vec<ServiceStatus> {
         handles.into_iter().filter_map(|h| h.join().ok().flatten()).collect()
     });
 
-    let mut cache = state.cache.lock().unwrap();
+    {
+    let mut cli = state.cli.lock().unwrap();
     let mut last = state.last_fetch.lock().unwrap();
     for f in fresh {
         last.insert(f.id, now);
-        let previous = cache.iter().position(|c| c.id == f.id);
-        let merged = match previous.map(|i| &cache[i]) {
+        let merged = match cli.get(f.id) {
             // One failed request shouldn't blank a row that was fine a
             // minute ago: keep the last good numbers, clearly marked stale.
             Some(old)
@@ -116,13 +126,52 @@ fn fetch_due(state: &AppState, force: bool) -> Vec<ServiceStatus> {
             }
             _ => f,
         };
-        match previous {
-            Some(i) => cache[i] = merged,
-            None => cache.push(merged),
-        }
+        cli.insert(merged.id, merged);
     }
-    cache.sort_by_key(|s| providers::IDS.iter().position(|id| *id == s.id));
+    }
+    rebuild_cache(state)
+}
+
+/// Pick what a row shows when both a CLI login and an in-app web sign-in
+/// can answer. They read the same usage pool, so any live answer will do.
+fn pick(cli: Option<&ServiceStatus>, web: Option<&ServiceStatus>) -> Option<ServiceStatus> {
+    let live = |s: &&ServiceStatus| s.state == SvcState::Connected && !s.stale;
+    if let Some(c) = cli.filter(live) {
+        return Some(c.clone());
+    }
+    if let Some(w) = web.filter(live) {
+        return Some(w.clone());
+    }
+    if let Some(c) = cli.filter(|c| c.state == SvcState::Connected) {
+        return Some(c.clone());
+    }
+    match (cli, web) {
+        (Some(c), Some(w)) if c.state == SvcState::NotConnected => Some(w.clone()),
+        (None, Some(w)) => Some(w.clone()),
+        (Some(c), _) => Some(c.clone()),
+        (None, None) => None,
+    }
+}
+
+fn rebuild_cache(state: &AppState) -> Vec<ServiceStatus> {
+    let cli = state.cli.lock().unwrap();
+    let web = state.web.lock().unwrap();
+    let merged: Vec<ServiceStatus> = providers::IDS
+        .iter()
+        .filter_map(|id| pick(cli.get(id), web.get(id)))
+        .collect();
+    drop((cli, web));
+    let mut cache = state.cache.lock().unwrap();
+    *cache = merged;
     cache.clone()
+}
+
+/// A web report just landed: refresh what the tray and popover show.
+pub(crate) fn apply_web_results(app: &AppHandle) {
+    let state: State<AppState> = app.state();
+    let status = rebuild_cache(&state);
+    update_tray(app, &status);
+    let _ = app.emit("usage", &status);
 }
 
 /// Fetch, then push the result to the tray and the popover.
@@ -270,6 +319,9 @@ fn get_status(state: State<AppState>) -> Vec<ServiceStatus> {
 
 #[tauri::command]
 async fn refresh_status(app: AppHandle) -> Result<Vec<ServiceStatus>, String> {
+    if !mock_mode() {
+        web::poll_due(&app, true);
+    }
     tauri::async_runtime::spawn_blocking(move || refresh_and_broadcast(&app, true))
         .await
         .map_err(|e| e.to_string())
@@ -335,6 +387,23 @@ fn open_url(url: String) -> Result<(), String> {
     #[cfg(all(unix, not(target_os = "macos")))]
     let r = std::process::Command::new("xdg-open").arg(&url).spawn();
     r.map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn web_logins(app: AppHandle) -> Vec<String> {
+    web::signed_in(&app)
+}
+
+#[tauri::command]
+async fn web_login(app: AppHandle, id: String) -> Result<(), String> {
+    web::open_login(&app, &id)
+}
+
+#[tauri::command]
+async fn web_logout(app: AppHandle, id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || web::sign_out(&app, &id))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -449,11 +518,16 @@ fn main() {
                 });
             }
 
+            *app.state::<AppState>().web_logins.lock().unwrap() = web::load_logins(app.handle());
+
             // Background poller: first fetch right away, then every TICK.
             // Per-provider intervals in `fetch_due` keep the real request
             // rate low.
             let handle = app.handle().clone();
             std::thread::spawn(move || loop {
+                if !mock_mode() {
+                    web::poll_due(&handle, false);
+                }
                 refresh_and_broadcast(&handle, false);
                 std::thread::sleep(TICK);
             });
@@ -469,6 +543,9 @@ fn main() {
             set_autostart,
             app_info,
             open_url,
+            web_logins,
+            web_login,
+            web_logout,
             quit
         ])
         .run(tauri::generate_context!())

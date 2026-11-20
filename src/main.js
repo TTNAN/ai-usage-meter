@@ -10,6 +10,8 @@ const ORDER = ["claude", "codex", "grok"];
 const ACCENT_VAR = { claude: "--c-claude", codex: "--c-codex", grok: "--c-grok" };
 const CLI = { claude: "claude", codex: "codex login", grok: "grok login" };
 const LABEL = { claude: "Claude", codex: "ChatGPT", grok: "Grok" };
+const WEB_IDS = ["claude", "grok"];
+let webLogins = [];
 
 const TAURI = window.__TAURI__ && window.__TAURI__.core ? window.__TAURI__ : null;
 const PREVIEW = !TAURI;
@@ -35,7 +37,7 @@ const STRINGS = {
     report: "Report an issue",
     quit: "Quit AI Usage Meter",
     privacy:
-      "Reads the logins your official CLIs already saved. Read-only requests, straight to each service. No servers, no analytics.",
+      "Reads the logins your official apps and CLIs already saved, or the accounts you sign in to here (the session stays inside this app). Read-only requests, straight to each service. No servers, no analytics.",
     local: "On-device · read-only",
     demo: "Demo data",
     left: "left",
@@ -46,14 +48,23 @@ const STRINGS = {
     resetsIn: (t) => `resets in ${t}`,
     resetsNow: "resetting now",
     noneTitle: "Nothing connected",
-    noneNum: "Sign in to a CLI",
-    noneLine: "Claude Code, ChatGPT (Codex) or Grok Build — then it just works.",
+    noneNum: "Sign in to start",
+    noneLine: "Sign in to Claude or Grok here, or use ChatGPT (Codex), Claude Code or Grok Build — then it just works.",
     loading: "Reading your quotas…",
     win: { session: "5-hour", weekly: "Weekly", weekly_opus: "Opus", weekly_sonnet: "Sonnet", period: "Period" },
     notConnected: (id) =>
       id === "codex"
         ? "Not connected. Open Codex in the ChatGPT desktop app and sign in, or run `codex login`."
-        : `Not connected. Run \`${CLI[id]}\` once to sign in.`,
+        : `Not connected. Sign in to your account, or run \`${CLI[id]}\` once.`,
+    webExpired: "Your sign-in expired.",
+    signInRow: "Sign in",
+    signIn: "Sign in",
+    signOut: "Signed in",
+    signOutTitle: "Click to sign out",
+    acctClaude: "Claude account",
+    acctClaudeSub: "claude.ai · same pool as the desktop app",
+    acctGrok: "Grok account",
+    acctGrokSub: "grok.com · same pool as the Grok app",
     fromSession: (t) => `from your latest Codex session · ${t}`,
     expired: (id) => `Login expired. Run \`${CLI[id]}\` once to refresh it.`,
     unavailable: (name) => `Couldn't reach ${name}. Retrying shortly.`,
@@ -78,7 +89,7 @@ const STRINGS = {
     star: "在 GitHub 上点个 Star",
     report: "反馈问题",
     quit: "退出 AI Usage Meter",
-    privacy: "只读取官方 CLI 已保存的登录状态，只发只读请求、直连各家服务。没有服务器，没有统计。",
+    privacy: "只读取官方应用和 CLI 已保存的登录，或你在这里登录的账号（登录状态只留在本应用里）。只发只读请求、直连各家服务。没有服务器，没有统计。",
     local: "本地运行 · 只读",
     demo: "演示数据",
     left: "剩余",
@@ -89,14 +100,23 @@ const STRINGS = {
     resetsIn: (t) => `${t}后重置`,
     resetsNow: "正在重置",
     noneTitle: "尚未连接",
-    noneNum: "先登录一个 CLI",
-    noneLine: "Claude Code、ChatGPT（Codex）或 Grok Build，登录后自动显示。",
+    noneNum: "登录一个账号",
+    noneLine: "在这里登录 Claude 或 Grok 账号，或用 ChatGPT（Codex）、Claude Code、Grok Build，登录后自动显示。",
     loading: "正在读取额度…",
     win: { session: "5 小时", weekly: "本周", weekly_opus: "Opus", weekly_sonnet: "Sonnet", period: "周期" },
     notConnected: (id) =>
       id === "codex"
         ? "未连接。在 ChatGPT 桌面版里打开 Codex 并登录，或运行 `codex login`。"
-        : `未连接。运行一次 \`${CLI[id]}\` 登录即可。`,
+        : `未连接。登录账号，或运行一次 \`${CLI[id]}\`。`,
+    webExpired: "登录已过期。",
+    signInRow: "登录账号",
+    signIn: "登录",
+    signOut: "已登录",
+    signOutTitle: "点击退出登录",
+    acctClaude: "Claude 账号",
+    acctClaudeSub: "claude.ai，与桌面版同一额度",
+    acctGrok: "Grok 账号",
+    acctGrokSub: "grok.com，与 Grok App 同一额度",
     fromSession: (t) => `来自最近一次 Codex 会话 · ${t}`,
     expired: (id) => `登录已过期。运行一次 \`${CLI[id]}\` 刷新登录。`,
     unavailable: (name) => `暂时连不上 ${name}，稍后自动重试。`,
@@ -282,11 +302,14 @@ function serviceRow(s) {
       body += `<div class="svc-msg"><span class="dot"></span><span data-ago="${s.fetchedAt}">${esc(t("fromSession")(fmtAgo(s.fetchedAt)))}</span></div>`;
   } else {
     const msg =
-      s.state === "expired" ? t("expired")(s.id)
+      s.state === "expired" && s.source === "web" ? t("webExpired")
+      : s.state === "expired" ? t("expired")(s.id)
       : s.state === "unavailable" ? t("unavailable")(s.label)
       : t("notConnected")(s.id);
     const warn = s.state === "expired" || s.state === "unavailable";
-    body = `<div class="svc-msg" title="${esc(s.note || "")}"><span class="dot ${warn ? "warn" : ""}"></span><span>${withCode(msg)}</span></div>`;
+    const login = WEB_IDS.includes(s.id) && (s.state !== "expired" || s.source === "web" || !webLogins.includes(s.id))
+      ? ` <button class="inline-btn" type="button" data-login="${s.id}">${esc(t("signInRow"))} →</button>` : "";
+    body = `<div class="svc-msg" title="${esc(s.note || "")}"><span class="dot ${warn ? "warn" : ""}"></span><span>${withCode(msg)}${login}</span></div>`;
   }
 
   return `<li class="${cls.join(" ")}" style="--accent: var(${ACCENT_VAR[s.id]})">
@@ -325,6 +348,23 @@ function render() {
   tick();
 }
 
+function renderAccounts() {
+  document.querySelectorAll("[data-acct]").forEach((b) => {
+    const on = webLogins.includes(b.dataset.acct);
+    b.classList.toggle("on", on);
+    b.textContent = t(on ? "signOut" : "signIn");
+    b.title = on ? t("signOutTitle") : "";
+  });
+}
+function loadLogins() {
+  if (PREVIEW) { webLogins = params.get("state") === "mixed" ? ["claude"] : []; renderAccounts(); return; }
+  invoke("web_logins").then((v) => { webLogins = v || []; renderAccounts(); }).catch(() => {});
+}
+function signIn(id) {
+  if (PREVIEW) return;
+  invoke("web_login", { id }).catch(() => {});
+}
+
 function fmtAgo(unixSecs) {
   const secs = Date.now() / 1000 - unixSecs;
   return secs < 45 ? t("justNow") : t("ago")(fmtDur(secs));
@@ -352,6 +392,7 @@ function applyI18n() {
   document.querySelectorAll(".seg").forEach((seg) => {
     seg.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.value === settings[seg.dataset.setting]));
   });
+  renderAccounts();
 }
 
 // --------------------------------------------------------------- actions
@@ -413,7 +454,7 @@ async function boot() {
     } catch (_) {}
     if (platform === "macos") root.classList.add("vibrancy");
   }
-  if (PREVIEW) document.getElementById("version").textContent = "v0.2.1";
+  if (PREVIEW) document.getElementById("version").textContent = "v0.3.0";
   root.classList.add("platform-" + platform);
   if (platform !== "macos") {
     document.getElementById("setting-tray").hidden = true;
@@ -442,6 +483,7 @@ async function boot() {
       render();
     })
   );
+  loadLogins();
   const auto = document.getElementById("autostart");
   if (!PREVIEW) invoke("get_autostart").then((v) => (auto.checked = !!v)).catch(() => {});
   auto.addEventListener("change", () => {
@@ -450,6 +492,18 @@ async function boot() {
   });
 
   document.getElementById("refresh").addEventListener("click", refresh);
+  document.getElementById("services").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-login]");
+    if (b) signIn(b.dataset.login);
+  });
+  document.querySelectorAll("[data-acct]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const id = b.dataset.acct;
+      if (webLogins.includes(id)) {
+        invoke("web_logout", { id }).then(loadLogins).catch(() => {});
+      } else signIn(id);
+    })
+  );
   document.getElementById("settings-btn").addEventListener("click", () =>
     showView(document.getElementById("view-settings").hidden ? "settings" : "usage")
   );
@@ -479,6 +533,7 @@ async function boot() {
 
   invoke("set_tray_mode", { mode: settings.tray }).catch(() => {});
   TAURI.event.listen("usage", (e) => setStatus(e.payload));
+  TAURI.event.listen("web-logins", (e) => { webLogins = e.payload || []; renderAccounts(); render(); });
   TAURI.event.listen("popover-shown", () => { showView("usage"); renderRings(); });
   setStatus(await invoke("get_status").catch(() => []));
 }

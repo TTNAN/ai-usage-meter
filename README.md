@@ -28,7 +28,8 @@
 - **菜单栏图标本身就是仪表** — 三根小电量条实时显示各家剩余额度；macOS 上还可以在图标旁直接显示百分比。
 - **每个窗口都看得到** — Claude 的 5 小时 / 本周（以及 Opus、Sonnet 单独额度）、ChatGPT 里 Codex 的 5 小时 / 本周、Grok 的计费周期，各自带倒计时。
 - **订阅档位** — 自动识别 Max、Pro、Plus、SuperGrok 等档位。
-- **零配置** — 直接复用 Claude Code、ChatGPT 桌面版（Codex）/ Codex CLI、Grok Build 已有的登录状态，装好就能用。
+- **零配置** — 直接复用 ChatGPT 桌面版（Codex）、Claude Code、Grok Build 已有的登录；只用 Claude / Grok 网页版或 App？在设置里登录一次账号就行。
+- **实时跟着变** — 后台每 1 到 5 分钟自动重读，你在网页、App、命令行哪里用掉的额度都会同步显示。
 - **原生质感** — macOS 原生毛玻璃弹窗、跟随系统深浅色、点击图标弹出、失焦自动收起；Windows 上从托盘弹出。
 - **中英双语** — 跟随系统语言，也可在设置里切换。
 - **安静可靠** — 后台低频轮询、手动刷新有限速；单次请求失败会保留上次读数并标注，绝不编造数字。
@@ -51,11 +52,13 @@ xattr -d com.apple.quarantine "/Applications/AI Usage Meter.app"
 
 然后登录你在用的工具（用哪个登哪个，没登录的会显示「未连接」）：
 
-| 服务 | 安装 | 登录 |
+| 服务 | 最简单的方式 | 也可以 |
 | --- | --- | --- |
-| Claude | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `claude` |
-| ChatGPT（Codex 额度） | [ChatGPT 桌面版](https://openai.com/chatgpt/download/) 或 [Codex CLI](https://github.com/openai/codex) | 在 ChatGPT 桌面版里打开 Codex 并登录，或 `codex login` |
-| Grok | [Grok Build](https://docs.x.ai/build/overview)（xAI 官方命令行工具） | `grok login` |
+| Claude | 点 Claude 一行的「登录账号」（或 设置 → Claude 账号），登录 claude.ai | 已装 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 的话自动读取 |
+| ChatGPT（Codex 额度） | 在 [ChatGPT 桌面版](https://openai.com/chatgpt/download/) 里打开 Codex 并登录 | [Codex CLI](https://github.com/openai/codex) `codex login` |
+| Grok | 点 Grok 一行的「登录账号」（或 设置 → Grok 账号），登录 grok.com | 已装 [Grok Build](https://docs.x.ai/build/overview) 的话自动读取 |
+
+> Claude 网页版、桌面版、手机版和 Claude Code 共用同一份额度；Grok 网页版、App 和 Grok Build 也共用同一个每周额度池。所以登录任意一处，看到的都是同一个数字。登录窗口里如果 Google 登录被拦截，换邮箱登录即可。
 
 ## 快捷键
 
@@ -68,24 +71,28 @@ xattr -d com.apple.quarantine "/Applications/AI Usage Meter.app"
 
 ## 工作原理
 
-三家目前都没有公开的「订阅额度」API，所以 AI Usage Meter 读取各家官方 CLI 自己在用的接口，使用它们已经保存在本机的登录凭证：
+三家目前都没有公开的「订阅额度」API，所以 AI Usage Meter 读取各家官方应用自己在用的接口：要么复用官方 CLI / 桌面版已保存在本机的登录，要么用你在应用里登录的网页账号。
 
 | 服务 | 接口 | 凭证位置 | 轮询 |
 | --- | --- | --- | --- |
 | Claude | `GET api.anthropic.com/api/oauth/usage` | macOS 钥匙串 `Claude Code-credentials`，或 `~/.claude/.credentials.json` | 5 分钟 |
 | ChatGPT（Codex） | `GET chatgpt.com/backend-api/wham/usage`；读不到登录或请求失败时，改读 `~/.codex/sessions` 里最近一次会话记录的额度 | `~/.codex/auth.json`（ChatGPT 桌面版与 Codex CLI 共用，支持 `$CODEX_HOME`） | 1 分钟 |
 | Grok | `GET cli-chat-proxy.grok.com/v1/billing` | `~/.grok/auth.json`（支持 `$GROK_HOME`） | 5 分钟 |
+| Claude 网页账号 | `GET claude.ai/api/organizations/{org}/usage` | 应用内登录窗口的 claude.ai 会话 | 3 分钟 |
+| Grok 网页账号 | grok.com 用量页自己请求的 `GetGrokCreditsConfig` | 应用内登录窗口的 grok.com 会话 | 5 分钟 |
+
+网页账号的请求在一个隐藏的窗口里、在对方网站自己的页面内发出（和你在浏览器里打开用量页一样），结果交回应用后显示。会话 cookie 只留在应用自己的浏览器存储里，不会被读出、复制或发往别处；在设置里点「已登录」即可退出并清除。
 
 > [!NOTE]
 > 2026 年 7 月起 Codex 桌面版并入了 ChatGPT 桌面版，所以这一行叫 ChatGPT。它显示的是 **Codex 的用量额度**，不是 ChatGPT 聊天的额度，两者分开计算。
 >
-> Grok 一行读的是 **Grok Build**（xAI 的官方命令行编程工具）的登录和额度，不是 grok.com 网页版或 Grok 手机 / 桌面 App。
+> Claude 和 Grok 两行，CLI 登录和网页账号都能用，两者都有时优先用 CLI，读不到再用网页账号。
 
 ## 隐私
 
 - 凭证只在发请求的那一刻从本机读取，只发给它所属的那家服务，不落盘、不上传。
-- 只发只读的 `GET` 请求，不会改动你的账号或 CLI 配置文件。
-- 没有服务器、没有统计、没有遥测。代码就这几百行，欢迎审阅：[`providers.rs`](src-tauri/src/providers.rs)。
+- 只发查询用量的只读请求，不会改动你的账号或 CLI 配置文件。
+- 没有服务器、没有统计、没有遥测。代码就这几百行，欢迎审阅：[`providers.rs`](src-tauri/src/providers.rs)、[`web.rs`](src-tauri/src/web.rs)。
 
 ## 风险说明
 

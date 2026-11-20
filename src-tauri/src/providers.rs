@@ -700,6 +700,239 @@ pub fn mock_status() -> Vec<ServiceStatus> {
     ]
 }
 
+// ------------------------------------------------- in-app web sign-in
+//
+// Claude (claude.ai — the same account the Claude desktop app uses) and
+// Grok (grok.com — the same account as the Grok apps) can also be read
+// through an in-app sign-in window. The requests run inside a hidden
+// webview on the service's own site; that webview hands the JSON / bytes
+// back here. These functions turn that report into a row.
+
+fn web_auth_failed(report: &serde_json::Value) -> bool {
+    report.get("auth").and_then(|a| a.as_bool()) == Some(false)
+}
+
+/// Report from the claude.ai webview:
+/// `{usage: <GET /api/organizations/{org}/usage>, capabilities: [...]}`,
+/// `{auth: false}` or `{error: "..."}`.
+pub fn claude_from_web(report: &serde_json::Value) -> ServiceStatus {
+    let base = ServiceStatus { source: "web", ..ServiceStatus::new("claude", "Claude", State::NotConnected) };
+    if web_auth_failed(report) {
+        return ServiceStatus { state: State::Expired, ..base }.with_note("claude.ai sign-in expired.");
+    }
+    let Some(usage) = report.get("usage").filter(|u| u.is_object()) else {
+        let why = report.get("error").and_then(|e| e.as_str()).unwrap_or("no data");
+        return ServiceStatus { state: State::Unavailable, ..base }.with_note(format!("claude.ai: {why}"));
+    };
+    let caps: Vec<&str> = report
+        .get("capabilities")
+        .and_then(|c| c.as_array())
+        .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+        .unwrap_or_default();
+    let plan = if caps.iter().any(|c| c.contains("max")) {
+        Some("Max".to_string())
+    } else if caps.iter().any(|c| c.contains("pro")) {
+        Some("Pro".to_string())
+    } else if caps.iter().any(|c| c.contains("enterprise")) {
+        Some("Enterprise".to_string())
+    } else if caps.iter().any(|c| c.contains("team") || c.contains("raven")) {
+        Some("Team".to_string())
+    } else {
+        None
+    };
+    let windows = parse_claude(usage);
+    if windows.is_empty() {
+        return ServiceStatus { state: State::Unavailable, plan, ..base }
+            .with_note("claude.ai returned a response we don't understand yet.");
+    }
+    ServiceStatus { state: State::Connected, plan, windows, ..base }
+}
+
+/// Report from the grok.com webview: `{b64: <GetGrokCreditsConfig gRPC-web
+/// response>, grpc: "<grpc-status>"}`, `{auth: false}` or `{error}`.
+pub fn grok_from_web(report: &serde_json::Value, now: i64) -> ServiceStatus {
+    let base = ServiceStatus { source: "web", ..ServiceStatus::new("grok", "Grok", State::NotConnected) };
+    if web_auth_failed(report) {
+        return ServiceStatus { state: State::Expired, ..base }.with_note("grok.com sign-in expired.");
+    }
+    let grpc = report.get("grpc").and_then(|g| g.as_str()).unwrap_or("0");
+    if grpc == "16" || grpc == "7" {
+        return ServiceStatus { state: State::Expired, ..base }.with_note("grok.com sign-in expired.");
+    }
+    let bytes = report.get("b64").and_then(|b| b.as_str()).and_then(base64_decode);
+    let Some(bytes) = bytes else {
+        let why = report.get("error").and_then(|e| e.as_str()).unwrap_or("no data");
+        return ServiceStatus { state: State::Unavailable, ..base }.with_note(format!("grok.com: {why}"));
+    };
+    match parse_grok_billing_proto(&bytes, now) {
+        Some(w) => ServiceStatus {
+            state: State::Connected,
+            plan: Some("SuperGrok".into()),
+            windows: vec![w],
+            ..base
+        },
+        None => ServiceStatus { state: State::Unavailable, ..base }
+            .with_note("grok.com returned a response we don't understand yet."),
+    }
+}
+
+fn base64_decode(s: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(s.len() * 3 / 4);
+    let (mut buf, mut bits) = (0u32, 0u32);
+    for c in s.bytes() {
+        let v = match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' | b'-' => 62,
+            b'/' | b'_' => 63,
+            b'=' | b'\n' | b'\r' => continue,
+            _ => return None,
+        } as u32;
+        buf = (buf << 6) | v;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buf >> bits) as u8);
+            buf &= (1 << bits) - 1;
+        }
+    }
+    Some(out)
+}
+
+#[derive(Default)]
+struct ProtoScan {
+    fixed32: Vec<(Vec<u64>, f32)>,
+    varints: Vec<(Vec<u64>, u64)>,
+}
+
+fn read_varint(b: &[u8], i: &mut usize) -> Option<u64> {
+    let mut v = 0u64;
+    for shift in 0..10 {
+        let byte = *b.get(*i)?;
+        *i += 1;
+        v |= ((byte & 0x7f) as u64) << (shift * 7);
+        if byte & 0x80 == 0 {
+            return Some(v);
+        }
+    }
+    None
+}
+
+/// Walk a protobuf message without a schema. Returns false when `b` is not
+/// a well-formed message (so the caller treats it as a plain byte string).
+fn scan_proto(b: &[u8], path: &mut Vec<u64>, out: &mut ProtoScan, depth: u32) -> bool {
+    if depth > 8 {
+        return false;
+    }
+    let mut local = ProtoScan::default();
+    let mut i = 0;
+    while i < b.len() {
+        let Some(key) = read_varint(b, &mut i) else { return false };
+        let (field, wire) = (key >> 3, key & 7);
+        if field == 0 {
+            return false;
+        }
+        path.push(field);
+        match wire {
+            0 => match read_varint(b, &mut i) {
+                Some(v) => local.varints.push((path.clone(), v)),
+                None => { path.pop(); return false }
+            },
+            1 => {
+                if i + 8 > b.len() { path.pop(); return false }
+                i += 8;
+            }
+            2 => {
+                let Some(len) = read_varint(b, &mut i) else { path.pop(); return false };
+                let len = len as usize;
+                if i + len > b.len() { path.pop(); return false }
+                let mut sub = ProtoScan::default();
+                if len > 0 && scan_proto(&b[i..i + len], path, &mut sub, depth + 1) {
+                    local.fixed32.extend(sub.fixed32);
+                    local.varints.extend(sub.varints);
+                }
+                i += len;
+            }
+            5 => {
+                if i + 4 > b.len() { path.pop(); return false }
+                let v = f32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
+                local.fixed32.push((path.clone(), v));
+                i += 4;
+            }
+            _ => { path.pop(); return false }
+        }
+        path.pop();
+    }
+    out.fixed32.extend(local.fixed32);
+    out.varints.extend(local.varints);
+    true
+}
+
+/// `GetGrokCreditsConfig` response (gRPC-web frames or a raw message):
+/// the used percent is the float at field path …/1 closest to the root
+/// (normally `[1, 1]`), the reset the timestamp at `[1, 5, 1]`.
+fn parse_grok_billing_proto(data: &[u8], now: i64) -> Option<UsageWindow> {
+    let mut payloads: Vec<&[u8]> = Vec::new();
+    let mut i = 0;
+    let mut framed = true;
+    while i < data.len() {
+        if i + 5 > data.len() { framed = false; break }
+        let flags = data[i];
+        if flags != 0 && flags != 0x80 { framed = false; break }
+        let len = u32::from_be_bytes([data[i + 1], data[i + 2], data[i + 3], data[i + 4]]) as usize;
+        let (start, end) = (i + 5, i + 5 + len);
+        if end > data.len() { framed = false; break }
+        if flags == 0 {
+            payloads.push(&data[start..end]);
+        }
+        i = end;
+    }
+    if !framed || payloads.is_empty() {
+        payloads = vec![data];
+    }
+    let mut scan = ProtoScan::default();
+    for p in payloads {
+        scan_proto(p, &mut Vec::new(), &mut scan, 0);
+    }
+    let percent = scan
+        .fixed32
+        .iter()
+        .filter(|(p, v)| p.last() == Some(&1) && v.is_finite() && (0.0..=100.0).contains(v))
+        .min_by_key(|(p, _)| p.len())
+        .map(|(_, v)| *v as f64);
+    let future: Vec<(&Vec<u64>, i64)> = scan
+        .varints
+        .iter()
+        .filter(|(_, v)| (1_700_000_000..=2_100_000_000).contains(v))
+        .map(|(p, v)| (p, *v as i64))
+        .filter(|(_, t)| *t > now)
+        .collect();
+    let reset = future
+        .iter()
+        .filter(|(p, _)| p.as_slice() == [1, 5, 1])
+        .map(|(_, t)| *t)
+        .min()
+        .or_else(|| future.iter().map(|(_, t)| *t).min());
+    let used = match (percent, reset) {
+        (Some(p), _) => p,
+        // A current period but no usage scalar: nothing used yet (proto3 omits 0).
+        (None, Some(_)) if scan.fixed32.is_empty() => 0.0,
+        _ => return None,
+    };
+    let secs = reset.map(|r| r - now);
+    let kind = match secs {
+        Some(s) if s <= 8 * 86_400 => "weekly",
+        _ => "period",
+    };
+    Some(UsageWindow {
+        kind,
+        used_percent: used.clamp(0.0, 100.0),
+        resets_at: reset,
+        window_seconds: if kind == "weekly" { Some(7 * 86_400) } else { None },
+    })
+}
+
 pub fn fetch_one(id: &str) -> Option<ServiceStatus> {
     match id {
         "claude" => Some(fetch_claude()),
@@ -759,6 +992,69 @@ mod tests {
         assert_eq!(w[0].resets_at, Some(1_770_526_799));
         assert_eq!(w[1].kind, "weekly");
         assert_eq!(w[1].used_percent, 26.0);
+    }
+
+    #[test]
+    fn grok_proto() {
+        // [1]{ [1] float 37.5, [5]{ [1] varint 1795672800 } }
+        let mut inner = vec![0x0d];
+        inner.extend_from_slice(&37.5f32.to_le_bytes());
+        let mut ts = vec![0x08];
+        let mut v: u64 = 1_795_672_800;
+        loop {
+            let b = (v & 0x7f) as u8;
+            v >>= 7;
+            if v == 0 { ts.push(b); break } else { ts.push(b | 0x80) }
+        }
+        inner.push(0x2a);
+        inner.push(ts.len() as u8);
+        inner.extend(ts);
+        let mut msg = vec![0x0a, inner.len() as u8];
+        msg.extend(inner);
+        let mut frame = vec![0, 0, 0, 0, msg.len() as u8];
+        frame.extend(&msg);
+        frame.extend([0x80, 0, 0, 0, 0x0f]);
+        frame.extend(b"grpc-status:0\r\n");
+        let w = parse_grok_billing_proto(&frame, 1_795_200_000).unwrap();
+        assert_eq!(w.used_percent, 37.5);
+        assert_eq!(w.resets_at, Some(1_795_672_800));
+        assert_eq!(w.kind, "weekly");
+        // through the report path, base64-encoded
+        let b64 = {
+            const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            let mut s = String::new();
+            for c in frame.chunks(3) {
+                let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+                for k in 0..4 {
+                    if k <= c.len() { s.push(T[(n >> (18 - 6 * k) & 63) as usize] as char) } else { s.push('=') }
+                }
+            }
+            s
+        };
+        let st = grok_from_web(&serde_json::json!({"b64": b64, "grpc": "0"}), 1_795_200_000);
+        assert_eq!(st.state, State::Connected);
+        assert_eq!(st.source, "web");
+        assert_eq!(st.windows[0].used_percent, 37.5);
+        let st = grok_from_web(&serde_json::json!({"auth": false}), 0);
+        assert_eq!(st.state, State::Expired);
+    }
+
+    #[test]
+    fn claude_web_report() {
+        let r = serde_json::json!({
+            "capabilities": ["chat", "claude_max"],
+            "usage": {
+                "five_hour": {"utilization": 42.0, "resets_at": "2026-11-20T10:00:00+00:00"},
+                "seven_day": {"utilization": 26.0, "resets_at": "2026-11-24T08:00:00+00:00"},
+                "seven_day_opus": null
+            }
+        });
+        let st = claude_from_web(&r);
+        assert_eq!(st.state, State::Connected);
+        assert_eq!(st.plan.as_deref(), Some("Max"));
+        assert_eq!(st.windows.len(), 2);
+        assert_eq!(st.source, "web");
+        assert_eq!(claude_from_web(&serde_json::json!({"auth": false})).state, State::Expired);
     }
 
     #[test]
