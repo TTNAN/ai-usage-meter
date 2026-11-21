@@ -957,7 +957,13 @@ fn find_gemini_cli_client() -> Option<(String, String)> {
 fn gemini_cli_on_path() -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     for dir in std::env::split_paths(&path) {
-        for name in ["gemini", "gemini.js", "gemini.cmd", "gemini.exe", "gemini.ps1"] {
+        for name in [
+            "gemini",
+            "gemini.js",
+            "gemini.cmd",
+            "gemini.exe",
+            "gemini.ps1",
+        ] {
             let candidate = dir.join(name);
             if candidate.is_file() {
                 let real = fs::canonicalize(&candidate).unwrap_or(candidate);
@@ -1005,7 +1011,11 @@ fn gemini_cli_homebrew_packages(out: &mut Vec<PathBuf>) {
             continue;
         };
         for formula in entries.flatten() {
-            if !formula.file_name().to_string_lossy().starts_with("gemini-cli") {
+            if !formula
+                .file_name()
+                .to_string_lossy()
+                .starts_with("gemini-cli")
+            {
                 continue;
             }
             let Ok(versions) = fs::read_dir(formula.path()) else {
@@ -1117,7 +1127,9 @@ fn oauth_client_in_package(dir: &std::path::Path) -> Option<(String, String)> {
     collect_script_files(dir, 3, &mut files);
     let mut scanned = 0u64;
     for file in files {
-        let Ok(meta) = fs::metadata(&file) else { continue };
+        let Ok(meta) = fs::metadata(&file) else {
+            continue;
+        };
         if meta.len() > 64 * 1024 * 1024 || scanned > 192 * 1024 * 1024 {
             continue;
         }
@@ -1212,9 +1224,7 @@ fn client_ids_in(text: &str) -> Vec<(usize, String)> {
             continue;
         }
         if let Some((number, rest)) = id.split_once('-') {
-            if number.len() >= 10
-                && number.chars().all(|c| c.is_ascii_digit())
-                && rest.len() >= 30
+            if number.len() >= 10 && number.chars().all(|c| c.is_ascii_digit()) && rest.len() >= 30
             {
                 found.push((at, id.to_string()));
             }
@@ -2181,7 +2191,14 @@ fn grpc_trailer_status(data: &[u8]) -> Option<i64> {
             let text = String::from_utf8_lossy(&data[start..end]);
             for line in text.lines() {
                 if let Some(v) = line.trim().strip_prefix("grpc-status:") {
-                    return v.trim().parse().ok();
+                    // A line this app cannot read as a number (a proxy's error
+                    // page, a half-cut frame) is not the answer: keep looking,
+                    // since a later line or trailer frame may carry the real
+                    // status. Returning on the first bad line used to turn a
+                    // signed-out account into an unreadable API.
+                    if let Ok(code) = v.trim().parse() {
+                        return Some(code);
+                    }
                 }
             }
         }
@@ -2237,8 +2254,11 @@ fn read_grok_credits(data: &[u8], now: i64) -> GrokCredits {
         // carried nothing. Not a schema change.
         return GrokCredits::Empty;
     }
-    if !framed {
-        // Not a gRPC-web body at all: try the whole thing as one message.
+    if !framed && payloads.is_empty() {
+        // Not a gRPC-web body at all: try the whole thing as one message. A
+        // body that stops mid-frame after good frames is different — those
+        // frames were read and still carry the numbers, so they are kept and
+        // only the truncated tail is dropped.
         payloads = vec![data];
     }
     if payloads.iter().all(|p| p.is_empty()) {
@@ -2531,6 +2551,52 @@ mod tests {
         // Bytes that are not protobuf at all.
         let st = grok_from_web(&json!({"b64": base64(b"<html>nope</html>")}), 0);
         assert_eq!(st.state, State::Changed);
+    }
+
+    #[test]
+    fn grpc_trailer_status_skips_a_line_it_cannot_read() {
+        // A first line that is not a number must not swallow the real status
+        // that follows it.
+        let trailer = b"grpc-status: abc\r\ngrpc-status: 16\r\n";
+        assert_eq!(grpc_trailer_status(&frame(0x80, trailer)), Some(16));
+
+        // Nor may it hide a valid status in a later trailer frame.
+        let mut both = frame(0x80, b"grpc-status: \xff\r\n");
+        both.extend(frame(0x80, b"grpc-status: 0\r\n"));
+        assert_eq!(grpc_trailer_status(&both), Some(0));
+
+        // With nothing readable anywhere there is still no status.
+        assert_eq!(
+            grpc_trailer_status(&frame(0x80, b"grpc-status: abc\r\n")),
+            None
+        );
+        assert_eq!(
+            grpc_trailer_status(&frame(0x80, b"grpc-message: hi\r\n")),
+            None
+        );
+    }
+
+    #[test]
+    fn grok_credits_keeps_good_frames_before_a_truncated_one() {
+        // A body cut off mid-frame after a complete data frame: what was read
+        // still holds the numbers, so the read must not fall back to scanning
+        // the raw bytes as one message.
+        let mut body = grok_credits_response(37.5, Some(1_795_672_800));
+        body.extend([0x00, 0x00, 0x00, 0x00, 0x28]);
+        match read_grok_credits(&body, 1_795_200_000) {
+            GrokCredits::Quota(w) => {
+                assert_eq!(w.used_percent, 37.5);
+                assert_eq!(w.resets_at, Some(1_795_672_800));
+            }
+            other => panic!("a truncated tail must not cost the data frame: {other:?}"),
+        }
+
+        // The same body with nothing complete in it is still unreadable, not
+        // silently empty: the first bytes are a cut frame header.
+        assert!(matches!(
+            read_grok_credits(&[0x00, 0x00, 0x00, 0x00, 0x28], 0),
+            GrokCredits::Unreadable
+        ));
     }
 
     #[test]
@@ -2926,7 +2992,10 @@ mod tests {
             "const CLOUD_SDK_CLIENT_ID={sdk_id:?}; {far_away}\nconst OAUTH_CLIENT_ID={want_id:?}; const OAUTH_CLIENT_SECRET={want_secret:?};"
         );
         let (id, secret) = oauth_client_in(&bundle).expect("a pair is found");
-        assert_eq!(id, want_id, "not the unrelated client id earlier in the file");
+        assert_eq!(
+            id, want_id,
+            "not the unrelated client id earlier in the file"
+        );
         assert_eq!(secret, want_secret);
     }
 
@@ -2942,7 +3011,10 @@ mod tests {
                 "/opt/homebrew/Cellar/gemini-cli/0.70.0/libexec/lib/node_modules/@google/gemini-cli"
             ))
         );
-        assert_eq!(scoped_gemini_package(&PathBuf::from("/usr/bin/gemini")), None);
+        assert_eq!(
+            scoped_gemini_package(&PathBuf::from("/usr/bin/gemini")),
+            None
+        );
     }
 
     #[test]
