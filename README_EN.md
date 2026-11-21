@@ -37,7 +37,7 @@ Tired of hitting "usage limit reached" mid-task? AI Usage Meter puts every 5-hou
 - **Every window, not just one** — Claude 5-hour / weekly (plus separate Opus and Sonnet limits), Codex 5-hour / weekly in ChatGPT, Grok's billing period, Gemini's Pro / Flash allowances, Copilot's premium requests and chat, each with its own countdown.
 - **See where a number is going** — every row keeps a short local history and draws it as a 36×12 sparkline; at the recent rate it estimates "~1h 42m left", but only when that actually lands before the reset. A quiet service adds nothing.
 - **Warned before the wall** — a native notification when a service drops to 15 % left, and one more when it goes under 5 %; each step is announced once per reset window, and "Low-quota alerts" in Settings turns the whole thing off. The alert speaks the interface language (English or Chinese).
-- **One global shortcut** — `⌘⇧U` / `Ctrl+Shift+U` brings the popover up, or puts it away, from any app. Settings can switch it to `⌘⇧A` or off, and says so plainly when another app already owns the combination.
+- **One global shortcut** — `⌘⇧U` / `Ctrl+Shift+U` brings the popover up, or puts it away, from any app. Settings can switch it to `⌘⇧A`, record any combination of its own (press Custom, then the keys — `Esc` cancels), or turn it off, and says so plainly when another app already owns the combination.
 - **Plan aware** — picks up Max, Pro, Plus, SuperGrok, Ultra, Individual and friends.
 - **Zero setup** — reuses the logins of the ChatGPT desktop app (Codex), Claude Code, Grok Build, Gemini CLI / Antigravity and the GitHub CLI / Copilot CLI. Only use Claude or Grok on the web or in their apps? Sign in once in Settings. Gemini's access token expires after an hour: the app renews it with the refresh token and writes it back to `~/.gemini/oauth_creds.json`, so you never have to run `gemini` again.
 - **Live** — re-reads every 1 to 5 minutes in the background, so usage from the web, the apps or the CLI shows up as it happens.
@@ -87,7 +87,7 @@ Then sign in to whichever tools you use (the rest just show "Not connected"):
 
 | Keys | Action |
 | --- | --- |
-| `⌘⇧U` / `Ctrl+Shift+U` | Global: show or put away the popover from any app (`⌘⇧A` or off in Settings) |
+| `⌘⇧U` / `Ctrl+Shift+U` | Global: show or put away the popover from any app (`⌘⇧A`, any combination you record — `⌘⌥K`, even `F1` — or off in Settings) |
 | `⌘R` / `Ctrl R` | Refresh |
 | `⌘,` | Settings |
 | `Esc` | Close the popover (or tuck it back against the edge) |
@@ -177,7 +177,7 @@ Want another service (Cursor, Windsurf…)? Open an [issue](https://github.com/T
 - [x] Notifications when a limit is about to run out
 - [x] More services: Gemini CLI / Antigravity, GitHub Copilot
 - [x] Usage trend sparkline and a burn-rate ETA
-- [x] A global shortcut (`⌘⇧U` / `Ctrl+Shift+U`)
+- [x] A global shortcut (`⌘⇧U` / `Ctrl+Shift+U`, or one you record)
 - [x] The Dock edition folded into one app: rings and dock views (0.7.0)
 - [x] A Linux build: `.deb` and `.AppImage`, with a tray icon
 - [ ] More services: Cursor, Windsurf
