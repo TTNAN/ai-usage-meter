@@ -67,7 +67,7 @@ xattr -cr "/Applications/AI Usage Meter.app"
 > [!TIP]
 > The app is not notarised yet, so if macOS blocks the first launch, right-click → Open (or run the command above) once and it opens normally from then on.
 >
-> Linux: install the `.deb` with `sudo apt install ./ai-usage-meter_0.7.1_amd64.deb`, or `chmod +x` the `.AppImage` and run it (AppImage needs FUSE, or use `--appimage-extract-and-run`). A Wayland session grants no global shortcut and lets no app place its own window, so neither the shortcut nor edge tucking is available there — Settings says so.
+> Linux: install the `.deb` with `sudo apt install ./AI.Usage.Meter_0.7.1_amd64.deb`, or `chmod +x` the `.AppImage` and run it (AppImage needs FUSE, or use `--appimage-extract-and-run`). A Wayland session grants no global shortcut and lets no app place its own window, so neither the shortcut nor edge tucking is available there — Settings says so.
 
 Then sign in to whichever tools you use (the rest just show "Not connected"):
 
