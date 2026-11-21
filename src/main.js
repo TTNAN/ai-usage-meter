@@ -1760,7 +1760,7 @@ async function boot() {
     } catch (_) {}
     if (platform === "macos") root.classList.add("vibrancy");
   }
-  if (PREVIEW) document.getElementById("version").textContent = "v0.7.0";
+  if (PREVIEW) document.getElementById("version").textContent = "v0.7.1";
   root.classList.add("platform-" + platform);
   if (platform !== "macos") {
     document.getElementById("setting-tray").hidden = true;

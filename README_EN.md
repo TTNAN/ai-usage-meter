@@ -52,7 +52,7 @@ Tired of hitting "usage limit reached" mid-task? AI Usage Meter puts every 5-hou
 
 ## Install
 
-Grab the latest from [Releases](https://github.com/TTNAN/ai-usage-meter/releases/latest) — [v0.7.0](https://github.com/TTNAN/ai-usage-meter/releases/tag/v0.7.0) today, with the macOS `.dmg`, the Windows `.exe` and `.msi`, and the Linux `.deb` and `.AppImage`:
+Grab the latest from [Releases](https://github.com/TTNAN/ai-usage-meter/releases/latest) — [v0.7.1](https://github.com/TTNAN/ai-usage-meter/releases/tag/v0.7.1) today, with the macOS `.dmg`, the Windows `.exe` and `.msi`, and the Linux `.deb` and `.AppImage`:
 
 | Platform | File | Notes |
 | --- | --- | --- |
@@ -67,7 +67,7 @@ xattr -cr "/Applications/AI Usage Meter.app"
 > [!TIP]
 > The app is not notarised yet, so if macOS blocks the first launch, right-click → Open (or run the command above) once and it opens normally from then on.
 >
-> Linux: install the `.deb` with `sudo apt install ./ai-usage-meter_0.7.0_amd64.deb`, or `chmod +x` the `.AppImage` and run it (AppImage needs FUSE, or use `--appimage-extract-and-run`). A Wayland session grants no global shortcut and lets no app place its own window, so neither the shortcut nor edge tucking is available there — Settings says so.
+> Linux: install the `.deb` with `sudo apt install ./ai-usage-meter_0.7.1_amd64.deb`, or `chmod +x` the `.AppImage` and run it (AppImage needs FUSE, or use `--appimage-extract-and-run`). A Wayland session grants no global shortcut and lets no app place its own window, so neither the shortcut nor edge tucking is available there — Settings says so.
 
 Then sign in to whichever tools you use (the rest just show "Not connected"):
 

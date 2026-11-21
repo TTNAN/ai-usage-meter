@@ -52,7 +52,7 @@
 
 ## 安装
 
-从 [Releases](https://github.com/TTNAN/ai-usage-meter/releases/latest) 下载最新版 —— 当前 [v0.7.0](https://github.com/TTNAN/ai-usage-meter/releases/tag/v0.7.0)，macOS `.dmg`、Windows `.exe` 与 `.msi`、Linux `.deb` 与 `.AppImage` 都在里面：
+从 [Releases](https://github.com/TTNAN/ai-usage-meter/releases/latest) 下载最新版 —— 当前 [v0.7.1](https://github.com/TTNAN/ai-usage-meter/releases/tag/v0.7.1)，macOS `.dmg`、Windows `.exe` 与 `.msi`、Linux `.deb` 与 `.AppImage` 都在里面：
 
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
@@ -67,7 +67,7 @@ xattr -cr "/Applications/AI Usage Meter.app"
 > [!TIP]
 > 应用尚未公证，所以首次打开被 macOS 拦下时，右键 → 打开，或者运行上面这行命令即可；之后就能正常双击启动了。
 >
-> Linux：`.deb` 用 `sudo apt install ./ai-usage-meter_0.7.0_amd64.deb` 安装；`.AppImage` 加 `chmod +x` 后直接运行（AppImage 需要 FUSE，或用 `--appimage-extract-and-run`）。Wayland 会话下没有全局快捷键，也不能贴边——这是 Wayland 的限制，应用会在设置里说明。
+> Linux：`.deb` 用 `sudo apt install ./ai-usage-meter_0.7.1_amd64.deb` 安装；`.AppImage` 加 `chmod +x` 后直接运行（AppImage 需要 FUSE，或用 `--appimage-extract-and-run`）。Wayland 会话下没有全局快捷键，也不能贴边——这是 Wayland 的限制，应用会在设置里说明。
 
 然后登录你在用的工具（用哪个登哪个，没登录的会显示「未连接」）：
 
