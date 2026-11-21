@@ -124,7 +124,7 @@ Web-account requests run in a hidden window, on the service's own page (just lik
 
 ## Caveats
 
-These are unofficial, internal endpoints and can change at any time. If one does, that row says it can't reach the service instead of showing a wrong number; each service's own settings page is the source of truth. Low-frequency read-only polling is low risk and there are no public reports of bans from it, but we can't promise there never will be.
+These are unofficial, internal endpoints and can change at any time. If one does, the row says which: "can't reach it" when the request fails, "API changed" when the service's answer no longer parses. Either way it never shows a wrong number; each service's own settings page is the source of truth. Low-frequency read-only polling is low risk and there are no public reports of bans from it, but we can't promise there never will be.
 
 ## Contributing
 
@@ -140,6 +140,7 @@ python3 -m http.server -d src 8000
 # http://localhost:8000/?state=empty          first run
 # http://localhost:8000/?state=mixed          mixed (not connected / expired)
 # http://localhost:8000/?state=down           two unreachable (timed out / HTTP 502)
+# http://localhost:8000/?state=changed        a changed API (Grok's answer no longer parses)
 # http://localhost:8000/?state=four           four connected (four rings)
 # http://localhost:8000/?view=settings        settings
 # add &wayland=1 to preview the greyed-out edge switch of a Wayland session

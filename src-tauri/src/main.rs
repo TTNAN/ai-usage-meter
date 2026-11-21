@@ -30,6 +30,16 @@ use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 
+/// Locks a mutex without letting one thread's panic spread through the app.
+///
+/// A poisoned mutex still holds whatever was in it, and for every value here
+/// a slightly stale map or list is far better than a tray app that cannot
+/// answer again: a poll is retried in minutes, but a poisoned `unwrap()` makes
+/// every later caller panic too, including the ones on the UI thread.
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 const TICK: Duration = Duration::from_secs(30);
 /// ⌘⇧U on macOS, Ctrl+Shift+U elsewhere. The UI can switch or turn it off.
 const DEFAULT_SHORTCUT: &str = "CommandOrControl+Shift+U";
@@ -49,7 +59,13 @@ fn on_wayland() -> bool {
 }
 
 /// Minimum seconds between automatic fetches, per provider.
-/// Claude's usage endpoint rate-limits aggressively, so it gets the most room.
+///
+/// Codex costs nothing to poll: its numbers are read from the session log the
+/// Codex CLI already wrote on this machine, not from the network. Every other
+/// provider is one request to a service whose endpoints were never meant for
+/// a poller, and Claude's usage endpoint rate-limits hardest — so they all
+/// wait five minutes (already five times the Codex interval), which keeps a
+/// row at most a few minutes behind without hammering anyone.
 fn poll_interval_secs(id: &str) -> i64 {
     match id {
         "codex" => 60,
@@ -142,7 +158,7 @@ struct AppState {
 
 fn fetch_due(state: &AppState, force: bool) -> Vec<ServiceStatus> {
     if mock_mode() {
-        let mut cache = state.cache.lock().unwrap();
+        let mut cache = lock(&state.cache);
         if cache.is_empty() {
             *cache = providers::mock_status();
         }
@@ -151,8 +167,8 @@ fn fetch_due(state: &AppState, force: bool) -> Vec<ServiceStatus> {
 
     let now = providers::now_unix();
     let due: Vec<&'static str> = {
-        let cli = state.cli.lock().unwrap();
-        let last = state.last_fetch.lock().unwrap();
+        let cli = lock(&state.cli);
+        let last = lock(&state.last_fetch);
         providers::IDS
             .iter()
             .copied()
@@ -170,7 +186,7 @@ fn fetch_due(state: &AppState, force: bool) -> Vec<ServiceStatus> {
             .collect()
     };
     if due.is_empty() {
-        return state.cache.lock().unwrap().clone();
+        return lock(&state.cache).clone();
     }
 
     // Network calls happen outside the locks, in parallel.
@@ -186,15 +202,15 @@ fn fetch_due(state: &AppState, force: bool) -> Vec<ServiceStatus> {
     });
 
     {
-        let mut cli = state.cli.lock().unwrap();
-        let mut last = state.last_fetch.lock().unwrap();
+        let mut cli = lock(&state.cli);
+        let mut last = lock(&state.last_fetch);
         for f in fresh {
             last.insert(f.id, now);
             let merged = match cli.get(f.id) {
                 // One failed request shouldn't blank a row that was fine a
                 // minute ago: keep the last good numbers, clearly marked stale.
                 Some(old)
-                    if f.state == SvcState::Unavailable
+                    if matches!(f.state, SvcState::Unavailable | SvcState::Changed)
                         && old.state == SvcState::Connected
                         && now - old.fetched_at < 30 * 60 =>
                 {
@@ -234,14 +250,14 @@ fn pick(cli: Option<&ServiceStatus>, web: Option<&ServiceStatus>) -> Option<Serv
 }
 
 fn rebuild_cache(state: &AppState) -> Vec<ServiceStatus> {
-    let cli = state.cli.lock().unwrap();
-    let web = state.web.lock().unwrap();
+    let cli = lock(&state.cli);
+    let web = lock(&state.web);
     let merged: Vec<ServiceStatus> = providers::IDS
         .iter()
         .filter_map(|id| pick(cli.get(id), web.get(id)))
         .collect();
     drop((cli, web));
-    let mut cache = state.cache.lock().unwrap();
+    let mut cache = lock(&state.cache);
     *cache = merged;
     cache.clone()
 }
@@ -293,12 +309,8 @@ fn low_quota_alerts(app: &AppHandle, status: &[ServiceStatus]) {
         })
         .collect();
     let due = {
-        let lang = state.notify_lang.lock().unwrap().clone();
-        state
-            .alerts
-            .lock()
-            .unwrap()
-            .due(providers::now_unix(), &readings, &lang)
+        let lang = lock(&state.notify_lang).clone();
+        lock(&state.alerts).due(providers::now_unix(), &readings, &lang)
     };
     for alert in due {
         let _ = app
@@ -328,6 +340,7 @@ fn tooltip(status: &[ServiceStatus]) -> String {
             (SvcState::Mock, Some(l)) => format!("{}  {:.0}% left (demo)", s.label, l),
             (SvcState::NotConnected, _) => format!("{}  not connected", s.label),
             (SvcState::Expired, _) => format!("{}  login expired", s.label),
+            (SvcState::Changed, _) => format!("{}  API changed", s.label),
             _ => format!("{}  unavailable", s.label),
         });
     }
@@ -354,12 +367,7 @@ fn update_tray(app: &AppHandle, status: &[ServiceStatus]) {
         ids[i].and_then(|id| items.iter().find(|(item, _)| *item == id)?.1)
     });
     let template = cfg!(target_os = "macos");
-    let custom = app
-        .state::<AppState>()
-        .custom_colors
-        .lock()
-        .unwrap()
-        .clone();
+    let custom = lock(&app.state::<AppState>().custom_colors).clone();
     let rgba = tray_icon::render(left, ids, template, &custom);
     let _ = tray.set_icon(Some(Image::new_owned(
         rgba,
@@ -373,7 +381,7 @@ fn update_tray(app: &AppHandle, status: &[ServiceStatus]) {
     #[cfg(target_os = "macos")]
     {
         let state: State<AppState> = app.state();
-        let mode = state.tray_mode.lock().unwrap().clone();
+        let mode = lock(&state.tray_mode).clone();
         let tightest = left
             .iter()
             .flatten()
@@ -430,7 +438,7 @@ fn place(window: &WebviewWindow, state: &AppState, x: f64, y: f64) {
 
 fn emit_edge(app: &AppHandle) {
     let state: State<AppState> = app.state();
-    let dock = *state.edge_dock.lock().unwrap();
+    let dock = *lock(&state.edge_dock);
     let payload = serde_json::json!({
         "edge": dock.as_str(),
         "hidden": state.edge_hidden.load(Ordering::Relaxed),
@@ -453,10 +461,10 @@ fn settle_window(app: &AppHandle) {
         return;
     }
     let Some(g) = geometry(&window) else { return };
-    let before = *state.edge_dock.lock().unwrap();
+    let before = *lock(&state.edge_dock);
     let after = edge::next(before, g.x, g.w, g.mx, g.mw, g.scale);
     if after != before {
-        *state.edge_dock.lock().unwrap() = after;
+        *lock(&state.edge_dock) = after;
         state.edge_hidden.store(false, Ordering::Relaxed);
         emit_edge(app);
     }
@@ -484,7 +492,7 @@ fn docked_x(state: &AppState, dock: edge::Dock, g: &Geometry) -> Option<f64> {
 /// Slide the window out of view (`tuck`) or back in, one eased frame at a time.
 fn slide_window(app: &AppHandle, tuck: bool) {
     let state: State<AppState> = app.state();
-    let dock = *state.edge_dock.lock().unwrap();
+    let dock = *lock(&state.edge_dock);
     if !dock.is_docked() {
         return;
     }
@@ -544,7 +552,7 @@ fn position_window(app: &AppHandle, window: &WebviewWindow) {
     let scale = window.scale_factor().unwrap_or(1.0);
     let margin = 8.0 * scale;
     let state: State<AppState> = app.state();
-    let anchor = *state.anchor.lock().unwrap();
+    let anchor = *lock(&state.anchor);
 
     let monitors = window.available_monitors().unwrap_or_default();
     let point = anchor.map(|(x, y, aw, _)| (x + aw / 2.0, y));
@@ -566,7 +574,7 @@ fn position_window(app: &AppHandle, window: &WebviewWindow) {
     let (mw, mh) = (monitor.size().width as f64, monitor.size().height as f64);
 
     // Docked: the edge decides, not the tray icon.
-    let dock = *state.edge_dock.lock().unwrap();
+    let dock = *lock(&state.edge_dock);
     if dock.is_docked() {
         let x = if state.edge_hidden.load(Ordering::Relaxed) {
             edge::hidden_x(dock, w, mx, mw, scale)
@@ -610,8 +618,7 @@ fn show_window(app: &AppHandle) {
     };
     let state: State<AppState> = app.state();
     // Tucked away at an edge: come back out instead of jumping under the tray.
-    let tucked =
-        state.edge_hidden.load(Ordering::Relaxed) && state.edge_dock.lock().unwrap().is_docked();
+    let tucked = state.edge_hidden.load(Ordering::Relaxed) && lock(&state.edge_dock).is_docked();
     if tucked {
         let _ = window.show();
         state.shown_at.store(now_ms(), Ordering::Relaxed);
@@ -632,8 +639,7 @@ fn toggle_window(app: &AppHandle) {
         return;
     };
     let state: State<AppState> = app.state();
-    let docked =
-        state.edge_enabled.load(Ordering::Relaxed) && state.edge_dock.lock().unwrap().is_docked();
+    let docked = state.edge_enabled.load(Ordering::Relaxed) && lock(&state.edge_dock).is_docked();
     if window.is_visible().unwrap_or(false) {
         if state.edge_hidden.load(Ordering::Relaxed) {
             slide_window(app, false);
@@ -668,7 +674,7 @@ fn apply_shortcut(app: &AppHandle, keys: &str) -> Result<(), String> {
     let state: State<AppState> = app.state();
     let manager = app.global_shortcut();
     let _ = manager.unregister_all();
-    *state.shortcut.lock().unwrap() = None;
+    *lock(&state.shortcut) = None;
     let keys = keys.trim();
     if keys.is_empty() || keys.eq_ignore_ascii_case("off") {
         return Ok(());
@@ -686,7 +692,7 @@ fn apply_shortcut(app: &AppHandle, keys: &str) -> Result<(), String> {
             }
         })
         .map_err(|e| format!("{keys}: {e}"))?;
-    *state.shortcut.lock().unwrap() = Some(keys.to_string());
+    *lock(&state.shortcut) = Some(keys.to_string());
     Ok(())
 }
 
@@ -716,7 +722,7 @@ fn toggle_window_from_shortcut(app: &AppHandle) {
         return;
     }
     // Visible and focused: put it away the way Esc does.
-    if state.edge_enabled.load(Ordering::Relaxed) && state.edge_dock.lock().unwrap().is_docked() {
+    if state.edge_enabled.load(Ordering::Relaxed) && lock(&state.edge_dock).is_docked() {
         slide_window(app, true);
     } else {
         let _ = window.hide();
@@ -728,7 +734,7 @@ fn toggle_window_from_shortcut(app: &AppHandle) {
 
 #[tauri::command]
 fn get_status(state: State<AppState>) -> Vec<ServiceStatus> {
-    state.cache.lock().unwrap().clone()
+    lock(&state.cache).clone()
 }
 
 /// The "Low-quota alerts" switch. Turning it back on re-arms the window the
@@ -737,7 +743,7 @@ fn get_status(state: State<AppState>) -> Vec<ServiceStatus> {
 fn set_notify_enabled(state: State<AppState>, enabled: bool) {
     let was = state.notify_enabled.swap(enabled, Ordering::Relaxed);
     if enabled && !was {
-        state.alerts.lock().unwrap().clear();
+        lock(&state.alerts).clear();
     }
 }
 
@@ -755,7 +761,7 @@ fn normalize_lang(lang: &str) -> &'static str {
 /// notification arrives in the same language as the window it belongs to.
 #[tauri::command]
 fn set_lang(state: State<AppState>, lang: String) {
-    *state.notify_lang.lock().unwrap() = normalize_lang(&lang).to_string();
+    *lock(&state.notify_lang) = normalize_lang(&lang).to_string();
 }
 
 #[tauri::command]
@@ -824,7 +830,7 @@ fn keep_in_place(app: &AppHandle, window: &WebviewWindow, width: f64, height: f6
         .ok()
         .map(|p| (p.x as f64, p.y as f64));
     let (mut x, mut y) = origin.unwrap_or((mx, my));
-    let dock = *state.edge_dock.lock().unwrap();
+    let dock = *lock(&state.edge_dock);
     if dock.is_docked() {
         // The edge owns the x (a tucked window belongs mostly off-screen, so
         // it must not be clamped back on); only the height can move it.
@@ -853,8 +859,8 @@ fn set_custom_colors(app: AppHandle, colors: HashMap<String, String>) {
         .iter()
         .filter_map(|(id, hex)| tray_icon::parse_hex(hex).map(|rgb| (id.clone(), rgb)))
         .collect();
-    *state.custom_colors.lock().unwrap() = parsed;
-    let status = state.cache.lock().unwrap().clone();
+    *lock(&state.custom_colors) = parsed;
+    let status = lock(&state.cache).clone();
     update_tray(&app, &status);
 }
 
@@ -878,7 +884,7 @@ fn set_edge_enabled(app: AppHandle, enabled: bool) {
 #[tauri::command]
 fn edge_state(app: AppHandle) -> serde_json::Value {
     let state: State<AppState> = app.state();
-    let dock = *state.edge_dock.lock().unwrap();
+    let dock = *lock(&state.edge_dock);
     serde_json::json!({
         "edge": dock.as_str(),
         "hidden": state.edge_hidden.load(Ordering::Relaxed),
@@ -890,7 +896,7 @@ fn edge_state(app: AppHandle) -> serde_json::Value {
 #[tauri::command]
 fn expand_docked(app: AppHandle) {
     let state: State<AppState> = app.state();
-    if !state.edge_dock.lock().unwrap().is_docked() {
+    if !lock(&state.edge_dock).is_docked() {
         return;
     }
     let Some(window) = main_window(&app) else {
@@ -909,7 +915,7 @@ fn expand_docked(app: AppHandle) {
 #[tauri::command]
 fn hide_window(app: AppHandle) {
     let state: State<AppState> = app.state();
-    if state.edge_enabled.load(Ordering::Relaxed) && state.edge_dock.lock().unwrap().is_docked() {
+    if state.edge_enabled.load(Ordering::Relaxed) && lock(&state.edge_dock).is_docked() {
         slide_window(&app, true);
         return;
     }
@@ -921,12 +927,12 @@ fn hide_window(app: AppHandle) {
 #[tauri::command]
 fn set_tray_mode(app: AppHandle, mode: String) {
     let state: State<AppState> = app.state();
-    *state.tray_mode.lock().unwrap() = if mode == "percent" {
+    *lock(&state.tray_mode) = if mode == "percent" {
         mode
     } else {
         "icon".into()
     };
-    let status = state.cache.lock().unwrap().clone();
+    let status = lock(&state.cache).clone();
     update_tray(&app, &status);
 }
 
@@ -934,7 +940,7 @@ fn set_tray_mode(app: AppHandle, mode: String) {
 /// draw the right option after a restart.
 #[tauri::command]
 fn get_global_shortcut(state: State<AppState>) -> String {
-    state.shortcut.lock().unwrap().clone().unwrap_or_default()
+    lock(&state.shortcut).clone().unwrap_or_default()
 }
 
 /// Switch the global shortcut. `keys` is an accelerator as the plugin spells
@@ -1186,7 +1192,7 @@ fn main() {
                             // Tucked against an edge: slide away instead of
                             // disappearing, leaving the grab handle.
                             let tucks = state.edge_enabled.load(Ordering::Relaxed)
-                                && state.edge_dock.lock().unwrap().is_docked();
+                                && lock(&state.edge_dock).is_docked();
                             if tucks {
                                 slide_window(&app, true);
                             } else {
@@ -1199,7 +1205,7 @@ fn main() {
                 });
             }
 
-            *app.state::<AppState>().web_logins.lock().unwrap() = web::load_logins(app.handle());
+            *lock(&app.state::<AppState>().web_logins) = web::load_logins(app.handle());
 
             // The global shortcut is held from the first moment, before the UI
             // has had time to send its saved choice; a combination another app
@@ -1281,7 +1287,7 @@ fn store_anchor(app: &AppHandle, rect: &Rect) {
         .unwrap_or(1.0);
     let pos = rect.position.to_physical::<f64>(scale);
     let size = rect.size.to_physical::<f64>(scale);
-    *app.state::<AppState>().anchor.lock().unwrap() = Some((pos.x, pos.y, size.width, size.height));
+    *lock(&app.state::<AppState>().anchor) = Some((pos.x, pos.y, size.width, size.height));
 }
 
 #[cfg(test)]

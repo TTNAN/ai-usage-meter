@@ -181,6 +181,12 @@ const STRINGS = {
     },
     unavailable: (name) => `Couldn't reach ${name}. Retrying shortly.`,
     unavailableWhy: (name, why) => `Couldn't reach ${name} (${why}) — retrying shortly.`,
+    // The service answered, but not in a shape this app knows: its API moved,
+    // so signing in again or waiting will not help — the app needs updating.
+    apiChanged: (name) =>
+      `${name} answered in a format this app doesn't understand — its API has probably changed. Check for an app update.`,
+    changedShort: "API changed",
+    changedHint: "update the app",
     // The short reason a failed fetch puts in `note`, said in this language;
     // anything else (an `HTTP 502`, say) is already readable as it is.
     reason: {
@@ -307,6 +313,11 @@ const STRINGS = {
     },
     unavailable: (name) => `暂时连不上 ${name}，稍后自动重试。`,
     unavailableWhy: (name, why) => `暂时连不上 ${name}（${why}），稍后自动重试。`,
+    // 服务有回应，但返回的结构本应用已经读不懂：接口变了，重新登录或等待都没用，需要新版本。
+    apiChanged: (name) =>
+      `${name} 的返回格式变了，本应用暂时读不懂（服务可能改了接口）。看看有没有新版本。`,
+    changedShort: "接口变了",
+    changedHint: "需要更新应用",
     reason: {
       "timed out": "超时",
       "offline or blocked": "离线或被拦截",
@@ -617,6 +628,14 @@ function demoStatus(kind) {
     });
     all[1] = down("codex", "Couldn't reach ChatGPT (timed out).");
     all[3] = down("gemini", "Couldn't reach Gemini (HTTP 502).");
+  }
+  if (kind === "changed") {
+    // The service answered, but in a shape this app cannot read: the row and
+    // the dock tile have to say so, and must not fall back to "not connected".
+    all[2] = {
+      id: "grok", label: "Grok", state: "changed", plan: null, windows: [], fetchedAt: now,
+      note: "grok.com answered in a format this app doesn't recognise — its API has probably changed.",
+    };
   }
   return all;
 }
@@ -940,10 +959,13 @@ function serviceRow(s) {
     const msg =
       s.state === "expired" && s.source === "web" ? t("webExpired")
       : s.state === "expired" ? t("expired")(s.id)
+      : s.state === "changed" ? t("apiChanged")(s.label)
       : s.state === "unavailable" ? unavailableMsg(s)
       : t("notConnected")(s.id);
-    const warn = s.state === "expired" || s.state === "unavailable";
-    const login = WEB_IDS.includes(s.id) && (s.state !== "expired" || s.source === "web" || !webLogins.includes(s.id))
+    const warn = s.state === "expired" || s.state === "unavailable" || s.state === "changed";
+    // A changed API is not a sign-in problem: offering "Sign in" there would
+    // send the user to a login page that cannot fix it.
+    const login = WEB_IDS.includes(s.id) && s.state !== "changed" && (s.state !== "expired" || s.source === "web" || !webLogins.includes(s.id))
       ? ` <button class="inline-btn" type="button" data-login="${s.id}">${esc(t("signInRow"))} →</button>` : "";
     body = `<div class="svc-msg" title="${esc(s.note || "")}"><span class="dot ${warn ? "warn" : ""}"></span><span>${withCode(msg)}${login}</span></div>`;
   }
@@ -1007,6 +1029,7 @@ function dockLabel(s) {
   if (!hasNumbers(s)) {
     if (s.state === "loading") return "…";
     if (s.state === "unavailable") return t("offlineShort");
+    if (s.state === "changed") return t("changedShort");
     return s.state === "expired" ? t("expiredShort") : t("notConnectedShort");
   }
   return t(settings.mode === "used" ? "used" : "left");
@@ -1061,6 +1084,7 @@ function dockCell(s) {
          // An unreachable service is signed in already — its line carries why.
          s.state === "loading" ? ""
            : s.state === "unavailable" ? noteReason(s.note) || t("offlineShort")
+           : s.state === "changed" ? t("changedHint")
            : WEB_IDS.includes(s.id) ? t("dockSignIn") : t("howToConnect")
        )}</div>`;
   const trend = live ? dockTrend(s) : "";
@@ -1090,8 +1114,11 @@ function renderDock() {
 
 /** How each service is connected: through a web sign-in, through its CLI, or not. */
 function dockChipState(id) {
-  if (webLogins.includes(id)) return "signed-in";
   const s = status.find((x) => x.id === id);
+  // An answer this app cannot read is the one thing worth saying about the
+  // service here: signing in again would not fix it.
+  if (s && s.state === "changed") return "changed";
+  if (webLogins.includes(id)) return "signed-in";
   return s && hasNumbers(s) ? "connected" : "not";
 }
 
@@ -1103,8 +1130,11 @@ function renderDockChips() {
     .map((s) => {
       const st = dockChipState(s.id);
       const state =
-        st === "signed-in" ? t("signOut") : st === "connected" ? t("dockConnected") : t("notConnectedShort");
-      return `<button class="chip${st === "not" ? "" : " on"}" type="button" data-login="${s.id}" title="${esc(
+        st === "signed-in" ? t("signOut")
+        : st === "connected" ? t("dockConnected")
+        : st === "changed" ? t("changedShort")
+        : t("notConnectedShort");
+      return `<button class="chip${st === "connected" || st === "signed-in" ? " on" : ""}" type="button" data-login="${s.id}" title="${esc(
         LABEL[s.id]
       )}"><span class="dot"></span>${esc(LABEL[s.id])} · ${esc(state)}</button>`;
     })

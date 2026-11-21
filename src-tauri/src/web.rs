@@ -15,7 +15,7 @@
 //! Session cookies stay inside the app's own webview storage. We never read
 //! them out, copy them or send them anywhere else.
 
-use crate::AppState;
+use crate::{lock, AppState};
 use ai_usage_core::providers;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -25,6 +25,33 @@ const REPORT_HOST: &str = "aum-report.invalid";
 /// The bare page we load to ask a site for its numbers: a static text file,
 /// so a poll costs one small request instead of a whole app.
 const LIGHT_PATH: &str = "/robots.txt";
+
+// ------------------------------------------------- Grok's credits call
+//
+// grok.com's own web bundle asks for its credit balance with one Connect-ES
+// (gRPC-web) unary call. The four pieces of that request are pinned here, in
+// one place, so that a change in grok.com's front end is a one-line change
+// here instead of a hunt through the page scripts.
+
+/// The method, on the page's own origin so the browser attaches the session
+/// cookie (and passes Cloudflare) like any tab would.
+const GROK_CREDITS_PATH: &str = "/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig";
+/// The last segment of `GROK_CREDITS_PATH`: grok.com's own scripts ask for the
+/// method by this name, which is how their answer is recognised when the full
+/// page is loaded.
+const GROK_CREDITS_METHOD: &str = "GetGrokCreditsConfig";
+/// What grok.com's bundle announces itself as. Connect-ES puts its protocol
+/// version here, and the server answers in kind.
+const GROK_CLIENT_AGENT: &str = "connect-es/2.1.1";
+/// `content-type` of a Connect-ES unary call in its binary encoding.
+const GROK_CONTENT_TYPE: &str = "application/grpc-web+proto";
+/// The request body, byte for byte: an empty `GetGrokCreditsConfigRequest`,
+/// already wrapped in the gRPC-web envelope. Five bytes of framing — a flag
+/// byte (0x00: a data frame, not a trailer) and the message length as a
+/// big-endian u32 (0x00 0x00 0x00 0x02) — then the message itself: `0x08 0x00`
+/// is field 1, varint, value 0 (the request has no fields set, and proto3
+/// still writes the empty message out).
+const GROK_CREDITS_REQUEST: [u8; 7] = [0x00, 0x00, 0x00, 0x00, 0x02, 0x08, 0x00];
 
 struct Site {
     id: &'static str,
@@ -107,7 +134,7 @@ fn save_logins(app: &AppHandle, logins: &HashSet<String>) {
 
 pub fn signed_in(app: &AppHandle) -> Vec<String> {
     let state = app.state::<AppState>();
-    let mut v: Vec<String> = state.web_logins.lock().unwrap().iter().cloned().collect();
+    let mut v: Vec<String> = lock(&state.web_logins).iter().cloned().collect();
     v.sort();
     v
 }
@@ -158,7 +185,7 @@ fn grok_init_js() -> String {
     format!(
         "if (location.hostname === 'grok.com') {{ {send}\n{intercept}\n  window.__aumFallback = () => {{ {ask} }};\n}}\n",
         send = report_js("grok"),
-        intercept = GROK_INTERCEPT_JS,
+        intercept = GROK_INTERCEPT_JS.replace("{METHOD}", GROK_CREDITS_METHOD),
         ask = grok_ask_js(),
     )
 }
@@ -177,7 +204,7 @@ const GROK_INTERCEPT_JS: &str = r#"
     const res = await origFetch(input, init);
     try {
       const url = typeof input === 'string' ? input : (input && input.url) || '';
-      if (url.includes('GetGrokCreditsConfig')) handle(res);
+      if (url.includes('{METHOD}')) handle(res);
     } catch (e) {}
     return res;
   };
@@ -186,15 +213,16 @@ const GROK_INTERCEPT_JS: &str = r#"
 /// POSTs to grok.com's credits endpoint (gRPC-web) and reports whatever comes
 /// back. Self-contained on purpose: it is the page's late fallback, and the
 /// only script that runs on the bare robots.txt document, where none of
-/// grok.com's own code exists.
+/// grok.com's own code exists. `{PATH}`, `{CTYPE}`, `{AGENT}`, `{BODY}` and
+/// `{HOST}` are filled in from the constants above by `grok_ask_js`.
 const GROK_ASK_JS: &str = r#"(async () => {
   const send = (o) => { try { location.href = 'https://{HOST}/grok?d=' + encodeURIComponent(JSON.stringify(o)); } catch (e) {} };
   const b64 = (buf) => { const a = new Uint8Array(buf); let s = ''; for (let i = 0; i < a.length; i++) s += String.fromCharCode(a[i]); return btoa(s); };
   try {
-    const res = await fetch('/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig', {
+    const res = await fetch('{PATH}', {
       method: 'POST', credentials: 'include',
-      headers: { 'content-type': 'application/grpc-web+proto', 'x-grpc-web': '1', 'x-user-agent': 'connect-es/2.1.1' },
-      body: new Uint8Array([0, 0, 0, 0, 2, 8, 0]),
+      headers: { 'content-type': '{CTYPE}', 'x-grpc-web': '1', 'x-user-agent': '{AGENT}' },
+      body: new Uint8Array({BODY}),
     });
     if (res.status === 401 || res.status === 403) return send({ auth: false });
     if (!res.ok) return send({ error: 'HTTP ' + res.status });
@@ -203,17 +231,38 @@ const GROK_ASK_JS: &str = r#"(async () => {
 })()"#;
 
 fn grok_ask_js() -> String {
-    GROK_ASK_JS.replace("{HOST}", REPORT_HOST)
+    GROK_ASK_JS
+        .replace("{HOST}", REPORT_HOST)
+        .replace("{PATH}", GROK_CREDITS_PATH)
+        .replace("{CTYPE}", GROK_CONTENT_TYPE)
+        .replace("{AGENT}", GROK_CLIENT_AGENT)
+        .replace("{BODY}", &format!("{:?}", GROK_CREDITS_REQUEST))
 }
 
 // ------------------------------------------------------------ reports
 
-fn handle_report(app: &AppHandle, url: &Url) {
-    let id = url.path().trim_start_matches('/').to_string();
-    let Some(site) = site(&id) else { return };
+/// Which site a report may speak for. The URL path names the site, but a page
+/// in one service's window can navigate anywhere: a script on claude.ai (or a
+/// third-party one it loads) could jump to `aum-report.invalid/grok?d=…` and
+/// write Grok's row. So a report is accepted only from that site's own hidden
+/// worker — never from the popover, a sign-in window, or the other service.
+fn report_site(label: &str, url: &Url) -> Option<&'static Site> {
+    let s = site(url.path().trim_start_matches('/'))?;
+    if label != worker_label(s.id) {
+        return None;
+    }
+    Some(s)
+}
+
+fn handle_report(app: &AppHandle, label: &str, url: &Url) {
+    let Some(site) = report_site(label, url) else {
+        return;
+    };
     let state = app.state::<AppState>();
-    if !state.web_logins.lock().unwrap().contains(site.id) {
-        return; // signed out meanwhile
+    if !lock(&state.web_logins).contains(site.id) {
+        // Signed out while the page was answering: drop its report rather than
+        // bring a row back for an account the user just left.
+        return;
     }
     let data = url
         .query_pairs()
@@ -223,18 +272,14 @@ fn handle_report(app: &AppHandle, url: &Url) {
     let report: serde_json::Value = serde_json::from_str(&data).unwrap_or(serde_json::Value::Null);
     if report.get("cf").and_then(|c| c.as_bool()) == Some(true) {
         // Cloudflare wants a full page first; next round loads the home page.
-        state.web_use_home.lock().unwrap().insert(site.id);
+        lock(&state.web_use_home).insert(site.id);
     }
     let status = match site.id {
         "claude" => providers::claude_from_web(&report),
         _ => providers::grok_from_web(&report, providers::now_unix()),
     };
-    state
-        .web_last_report
-        .lock()
-        .unwrap()
-        .insert(site.id, providers::now_unix());
-    state.web.lock().unwrap().insert(site.id, status);
+    lock(&state.web_last_report).insert(site.id, providers::now_unix());
+    lock(&state.web).insert(site.id, status);
     crate::apply_web_results(app);
     // The report is the last thing this hidden window was for: let go of it
     // instead of keeping a whole webview resident until the next poll. The
@@ -248,11 +293,7 @@ fn handle_report(app: &AppHandle, url: &Url) {
 /// by the worker epoch, so a poll that has already taken the window over is
 /// never closed out from under itself.
 fn close_worker_after_report(app: &AppHandle, id: &'static str) {
-    let epoch = app
-        .state::<AppState>()
-        .web_worker_epoch
-        .lock()
-        .unwrap()
+    let epoch = lock(&app.state::<AppState>().web_worker_epoch)
         .get(id)
         .copied()
         .unwrap_or(0);
@@ -260,15 +301,7 @@ fn close_worker_after_report(app: &AppHandle, id: &'static str) {
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(200));
         let state = app.state::<AppState>();
-        if state
-            .web_worker_epoch
-            .lock()
-            .unwrap()
-            .get(id)
-            .copied()
-            .unwrap_or(0)
-            != epoch
-        {
+        if lock(&state.web_worker_epoch).get(id).copied().unwrap_or(0) != epoch {
             return;
         }
         if let Some(w) = app.get_webview_window(&worker_label(id)) {
@@ -287,7 +320,7 @@ fn worker_label(id: &str) -> String {
 /// whether the window it meant is still the current one.
 fn bump_worker_epoch(app: &AppHandle, id: &'static str) -> u64 {
     let state = app.state::<AppState>();
-    let mut epochs = state.web_worker_epoch.lock().unwrap();
+    let mut epochs = lock(&state.web_worker_epoch);
     let n = epochs.entry(id).or_insert(0);
     *n += 1;
     *n
@@ -300,6 +333,10 @@ fn worker(app: &AppHandle, site: &'static Site) -> Option<WebviewWindow> {
     }
     let url = Url::parse(site.poll_url).ok()?;
     let nav_app = app.clone();
+    // The label this window is created with, carried into its own navigation
+    // handler: `handle_report` refuses a report whose URL names a different
+    // site, so this window can only ever speak for the site it was built for.
+    let nav_label = label.clone();
     let site_id = site.id;
     let host = site.host;
     let mut b = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(url))
@@ -310,7 +347,7 @@ fn worker(app: &AppHandle, site: &'static Site) -> Option<WebviewWindow> {
         .inner_size(480.0, 640.0)
         .on_navigation(move |u| {
             if u.host_str() == Some(REPORT_HOST) {
-                handle_report(&nav_app, u);
+                handle_report(&nav_app, &nav_label, u);
                 return false;
             }
             // Bounced to a sign-in page: the session is gone.
@@ -321,7 +358,7 @@ fn worker(app: &AppHandle, site: &'static Site) -> Option<WebviewWindow> {
             {
                 let report = format!("https://{REPORT_HOST}/{site_id}?d=%7B%22auth%22%3Afalse%7D");
                 if let Ok(r) = Url::parse(&report) {
-                    handle_report(&nav_app, &r);
+                    handle_report(&nav_app, &nav_label, &r);
                 }
                 return false;
             }
@@ -355,10 +392,7 @@ fn worker(app: &AppHandle, site: &'static Site) -> Option<WebviewWindow> {
                         let started = providers::now_unix();
                         std::thread::sleep(std::time::Duration::from_secs(12));
                         let state = app.state::<AppState>();
-                        let last = state
-                            .web_last_report
-                            .lock()
-                            .unwrap()
+                        let last = lock(&state.web_last_report)
                             .get("grok")
                             .copied()
                             .unwrap_or(0);
@@ -386,11 +420,11 @@ fn worker(app: &AppHandle, site: &'static Site) -> Option<WebviewWindow> {
 pub fn poll_due(app: &AppHandle, force: bool) {
     let now = providers::now_unix();
     let state = app.state::<AppState>();
-    let ids: Vec<String> = state.web_logins.lock().unwrap().iter().cloned().collect();
+    let ids: Vec<String> = lock(&state.web_logins).iter().cloned().collect();
     for id in ids {
         let Some(site) = site(&id) else { continue };
         let due = {
-            let mut last = state.web_last_poll.lock().unwrap();
+            let mut last = lock(&state.web_last_poll);
             let since = now - last.get(site.id).copied().unwrap_or(0);
             let ok = since >= if force { 30 } else { site.every_secs };
             if ok {
@@ -401,7 +435,7 @@ pub fn poll_due(app: &AppHandle, force: bool) {
         if !due {
             continue;
         }
-        let home = state.web_use_home.lock().unwrap().remove(site.id);
+        let home = lock(&state.web_use_home).remove(site.id);
         let target = if home {
             format!("https://{}/", site.host)
         } else {
@@ -470,11 +504,11 @@ pub fn open_login(app: &AppHandle, id: &str) -> Result<(), String> {
                 let _ = w.close();
                 let state = app.state::<AppState>();
                 {
-                    let mut logins = state.web_logins.lock().unwrap();
+                    let mut logins = lock(&state.web_logins);
                     logins.insert(site.id.to_string());
                     save_logins(&app, &logins);
                 }
-                state.web_last_poll.lock().unwrap().remove(site.id);
+                lock(&state.web_last_poll).remove(site.id);
                 if let Some(old) = app.get_webview_window(&worker_label(site.id)) {
                     let _ = old.close();
                 }
@@ -493,13 +527,13 @@ pub fn sign_out(app: &AppHandle, id: &str) -> Result<(), String> {
     let site = site(id).ok_or("unknown service")?;
     let state = app.state::<AppState>();
     {
-        let mut logins = state.web_logins.lock().unwrap();
+        let mut logins = lock(&state.web_logins);
         logins.remove(site.id);
         save_logins(app, &logins);
     }
-    state.web.lock().unwrap().remove(site.id);
-    state.web_last_poll.lock().unwrap().remove(site.id);
-    state.web_use_home.lock().unwrap().remove(site.id);
+    lock(&state.web).remove(site.id);
+    lock(&state.web_last_poll).remove(site.id);
+    lock(&state.web_use_home).remove(site.id);
 
     let mut hosts = vec![format!("https://{}/", site.host)];
     if site.id == "grok" {
@@ -537,4 +571,84 @@ pub fn sign_out(app: &AppHandle, id: &str) -> Result<(), String> {
     crate::apply_web_results(app);
     let _ = app.emit("web-logins", signed_in(app));
     Ok(())
+}
+
+// ------------------------------------------------------------------ tests
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn report_url(path: &str) -> Url {
+        Url::parse(&format!(
+            "https://{REPORT_HOST}/{path}?d=%7B%22auth%22%3Afalse%7D"
+        ))
+        .expect("a report URL")
+    }
+
+    #[test]
+    fn a_report_is_only_taken_from_the_window_that_fetched_it() {
+        // Each site's own hidden worker, which is what the poller creates.
+        assert_eq!(
+            report_site("web-claude", &report_url("claude")).map(|s| s.id),
+            Some("claude")
+        );
+        assert_eq!(
+            report_site("web-grok", &report_url("grok")).map(|s| s.id),
+            Some("grok")
+        );
+
+        // The page in one service's window cannot answer for the other: a
+        // script on claude.ai that navigates to the Grok report URL is not
+        // Grok, and its report is dropped.
+        assert!(report_site("web-claude", &report_url("grok")).is_none());
+        assert!(report_site("web-grok", &report_url("claude")).is_none());
+
+        // Nor can the popover, or a sign-in window the user is typing in.
+        assert!(report_site("main", &report_url("grok")).is_none());
+        assert!(report_site("login-grok", &report_url("grok")).is_none());
+
+        // A path that names no site is nobody's report.
+        assert!(report_site("web-grok", &report_url("nothing")).is_none());
+        assert!(report_site("web-grok", &report_url("")).is_none());
+    }
+
+    #[test]
+    fn the_ask_script_is_built_from_the_connect_es_constants() {
+        let js = grok_ask_js();
+        assert!(js.contains(GROK_CREDITS_PATH), "the method path is in it");
+        assert!(js.contains(GROK_CONTENT_TYPE));
+        assert!(js.contains(GROK_CLIENT_AGENT));
+        assert!(
+            js.contains("[0, 0, 0, 0, 2, 8, 0]"),
+            "the enveloped request bytes are in it"
+        );
+        assert!(js.contains(&format!("https://{}/grok", REPORT_HOST)));
+        for placeholder in ["{HOST}", "{PATH}", "{CTYPE}", "{AGENT}", "{BODY}"] {
+            assert!(!js.contains(placeholder), "{placeholder} was left unfilled");
+        }
+    }
+
+    #[test]
+    fn the_method_name_is_the_end_of_the_path_it_is_asked_on() {
+        assert!(GROK_CREDITS_PATH.ends_with(GROK_CREDITS_METHOD));
+        let init = grok_init_js();
+        assert!(
+            init.contains(GROK_CREDITS_METHOD),
+            "the fetch watcher matches the method it is watching for"
+        );
+        assert!(!init.contains("{METHOD}"));
+    }
+
+    #[test]
+    fn the_envelope_says_two_bytes_of_message() {
+        assert_eq!(GROK_CREDITS_REQUEST.len(), 7);
+        let framed = &GROK_CREDITS_REQUEST[..5];
+        assert_eq!(framed[0], 0x00, "a data frame, not a trailer");
+        assert_eq!(
+            u32::from_be_bytes([framed[1], framed[2], framed[3], framed[4]]),
+            2,
+            "the message length the envelope announces"
+        );
+    }
 }
