@@ -1,8 +1,8 @@
 //! AI Usage Meter — a menu-bar (macOS) / system-tray (Windows) app that shows
 //! how much Claude, ChatGPT (Codex), Grok, Gemini and GitHub Copilot quota you
 //! have left. One window, two shapes: the rings popover (372 px, every window
-//! and countdown in a row) and the compact dock bar (as wide as its tiles,
-//! one small tile per service), switched in the UI and sized from there.
+//! and countdown in a row) and the dock panel (five brand squircles on one
+//! tray, as wide as its tiles), switched in the UI and sized from there.
 //!
 //! * `ai-usage-core` talks to each service (read-only, reusing CLI logins),
 //!   draws the live tray icon and decides the low-quota notifications.
@@ -779,7 +779,7 @@ fn set_window_size(app: AppHandle, width: f64, height: f64) {
 /// After the window changes shape, put it back somewhere sensible: a window
 /// tucked against an edge follows that edge, and a free one keeps the corner
 /// it was at, moved only as far as the new size needs to stay on screen.
-/// (The rings view and the dock bar have very different widths, so a window
+/// (The rings view and the dock panel have very different widths, so a window
 /// opened near the right edge would otherwise hang off it.)
 ///
 /// The new size is passed in rather than read back from the window: right
