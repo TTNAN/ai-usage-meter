@@ -19,9 +19,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest, windows-latest, ubuntu-22.04]
     steps:
       - uses: actions/checkout@v4
+      - name: Install Linux system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -46,8 +60,27 @@ jobs:
             os: windows-latest
             target: x86_64-pc-windows-msvc
             rust_targets: x86_64-pc-windows-msvc
+          - name: Linux x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            rust_targets: x86_64-unknown-linux-gnu
     steps:
       - uses: actions/checkout@v4
+      - name: Install Linux system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libfuse2
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_targets }}
@@ -60,7 +93,14 @@ jobs:
         run: cargo install tauri-cli --version "^2" --locked
 
       - name: Build app
+        if: runner.os != 'Linux'
         run: cargo tauri build --target ${{ matrix.target }}
+
+      # Linux ships a .deb and an AppImage: rpm is not built (that needs
+      # rpmbuild, which the runner does not have and nobody asked for).
+      - name: Build app (Linux)
+        if: runner.os == 'Linux'
+        run: cargo tauri build --target ${{ matrix.target }} --bundles deb,appimage
 
       # The release binary must start, print status JSON and exit 0 — with
       # demo data, and with real discovery on a clean runner (expected:
@@ -91,6 +131,16 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
           if-no-files-found: error
 
+      - name: Upload Linux artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-usage-meter-linux
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
+            src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+
   release:
     name: Release
     needs: build
@@ -112,4 +162,6 @@ jobs:
             artifacts/**/*.dmg
             artifacts/**/*.msi
             artifacts/**/*.exe
+            artifacts/**/*.deb
+            artifacts/**/*.AppImage
           generate_release_notes: true
