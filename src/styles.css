@@ -5,6 +5,9 @@
   --c-claude: #e08a6b;
   --c-codex: #6e9bff;
   --c-grok: #b38cff;
+  --c-gemini: #3ec8d8;
+  --c-copilot: #5fc27e;
+  --c-neutral: #9a9aa2;
   --c-warn: #f5b04c;
   --c-danger: #ff6b6b;
 
@@ -32,6 +35,9 @@
     --c-claude: #d0704f;
     --c-codex: #3d74f0;
     --c-grok: #8b5cf6;
+    --c-gemini: #0e93a2;
+    --c-copilot: #2f9e51;
+    --c-neutral: #71717a;
     --c-warn: #d98a0b;
     --c-danger: #e5484d;
     --bg: rgba(250, 250, 250, 0.9);
@@ -57,6 +63,9 @@ html.vibrancy { --bg: rgba(24, 24, 27, 0.42); }
 html.preview body { padding: 24px; background: #0c0c0e; min-height: 100vh; }
 @media (prefers-color-scheme: light) { html.preview body { background: #e9e9ec; } }
 html.preview.bare body { background: transparent; padding: 40px; }
+html.preview.frame body { background: transparent; padding: 0; }
+/* Framed for a screenshot: the panel sizes to its content, page and all. */
+html.preview.frame .panel { max-height: none; }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { background: transparent; }
@@ -84,19 +93,19 @@ svg { display: block; }
   display: flex;
   flex-direction: column;
 }
-html.preview .panel { box-shadow: var(--shadow), inset 0 0 0 1px var(--hair-strong); }
+html.preview .panel { box-shadow: var(--shadow), inset 0 0 0 1px var(--hair-strong); max-height: calc(100vh - 48px); }
+html.preview.bare .panel { max-height: calc(100vh - 80px); }
 html:not(.vibrancy):not(.preview) .panel { background: var(--bg-solid); }
 
 /* ------------------------------------------------------------- header */
 .top {
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 10px 4px 16px;
-  -webkit-app-region: drag;
 }
 .brand { display: flex; align-items: center; gap: 8px; }
 .brand-mark { width: 15px; height: 15px; }
 .brand-name { font-weight: 600; font-size: 13px; letter-spacing: -0.01em; }
-.top-actions { display: flex; align-items: center; gap: 2px; -webkit-app-region: no-drag; }
+.top-actions { display: flex; align-items: center; gap: 2px; }
 .updated {
   font-size: 11px; color: var(--text-3);
   font-variant-numeric: tabular-nums; margin-right: 6px;
@@ -148,7 +157,34 @@ html:not(.vibrancy):not(.preview) .panel { background: var(--bg-solid); }
 .hero-empty .hero-num { font-size: 22px; letter-spacing: -0.02em; margin: 4px 0; }
 
 /* ----------------------------------------------------------- services */
-.services { list-style: none; padding: 0 8px 6px; }
+/* Five services with every window expanded can outgrow a small screen, so
+   the list gets a ceiling of its own and scrolls inside the popover instead
+   of pushing the footer off the window. 480px fits the five demo rows and a
+   list with a not-connected or expired row; anything longer scrolls, with a
+   short fade at the bottom while there is more to see. */
+.services {
+  list-style: none;
+  padding: 0 8px 12px;
+  max-height: 480px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hair-strong) transparent;
+}
+/* Only while a row is cut off: fade the edge instead of slicing it. */
+.services.overflowing {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
+}
+.services::-webkit-scrollbar { width: 9px; }
+.services::-webkit-scrollbar-track { background: transparent; }
+.services::-webkit-scrollbar-thumb {
+  background: var(--hair-strong);
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.services::-webkit-scrollbar-thumb:hover { background: var(--text-3); background-clip: content-box; }
 .svc {
   padding: 11px 10px 11px;
   border-radius: 12px;
@@ -172,10 +208,19 @@ html:not(.vibrancy):not(.preview) .panel { background: var(--bg-solid); }
   -webkit-mask: var(--glyph) center / contain no-repeat;
   mask: var(--glyph) center / contain no-repeat;
 }
+/* Brand marks drawn in their own colours (Gemini's four-colour spark) are
+   images rather than masks, on a light tile so every colour reads. */
+.tile img { width: 17px; height: 17px; display: block; }
 .tile.claude { background: linear-gradient(160deg, #e2876a, #c9644a); --glyph: url(icons/claude.svg); }
 .tile.codex { background: linear-gradient(160deg, #2b2b30, #0e0e10); --glyph: url(icons/codex.svg); }
 .tile.grok { background: linear-gradient(160deg, #2b2b30, #0e0e10); --glyph: url(icons/grok.png); }
 .tile.grok i { width: 14px; height: 14px; }
+.tile.gemini {
+  background: linear-gradient(160deg, #ffffff, #e9eefb);
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.16), 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+.tile.copilot { background: linear-gradient(160deg, #2b2b30, #0e0e10); --glyph: url(icons/copilot.svg); }
+.tile.copilot i { width: 16px; height: 16px; }
 
 .svc-name { font-weight: 600; font-size: 13px; letter-spacing: -0.01em; }
 .plan {
@@ -185,8 +230,25 @@ html:not(.vibrancy):not(.preview) .panel { background: var(--bg-solid); }
   box-shadow: inset 0 0 0 0.5px var(--hair-strong);
 }
 .svc-value {
-  margin-left: auto; display: flex; align-items: baseline; gap: 4px;
+  margin-left: auto; display: flex; align-items: baseline; gap: 4px; white-space: nowrap;
   font-family: var(--font-num); font-variant-numeric: tabular-nums;
+}
+
+/* Trend: a 36×12 sparkline and, when it is going to run out before it resets,
+   a quiet ETA. Omitted entirely when the samples can't say anything. */
+.trend {
+  margin-left: auto; display: flex; align-items: center; gap: 6px;
+  color: var(--text-3); min-width: 0;
+}
+.trend + .svc-value { margin-left: 8px; }
+.spark { width: 36px; height: 12px; flex: none; overflow: visible; }
+.spark polyline {
+  fill: none; stroke: var(--accent); stroke-width: 1.1;
+  stroke-linecap: round; stroke-linejoin: round; opacity: 0.62;
+}
+.trend .eta {
+  font-size: 10.5px; color: var(--text-3); white-space: nowrap;
+  font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis;
 }
 .svc-value strong { font-size: 15px; font-weight: 600; letter-spacing: -0.02em; }
 .svc-value span { font-size: 11px; color: var(--text-3); }
@@ -235,6 +297,30 @@ html:not(.vibrancy):not(.preview) .panel { background: var(--bg-solid); }
 
 /* ----------------------------------------------------------- settings */
 .view-settings { padding: 2px 12px 8px; }
+/* The settings page is taller than a popover should be: it scrolls inside the
+   card, with the back button staying put. */
+.settings-body {
+  max-height: 592px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hair-strong) transparent;
+  padding: 1px 2px 2px 0;
+}
+.settings-body::-webkit-scrollbar { width: 9px; }
+.settings-body::-webkit-scrollbar-track { background: transparent; }
+.settings-body::-webkit-scrollbar-thumb {
+  background: var(--hair-strong);
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.settings-body::-webkit-scrollbar-thumb:hover { background: var(--text-3); background-clip: content-box; }
+/* Only while another group is cut off: fade the edge instead of slicing it. */
+.settings-body.overflowing {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+}
 .back {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 6px 8px 6px 4px; margin: 0 0 6px; border-radius: 8px;
@@ -266,6 +352,11 @@ html:not(.vibrancy):not(.preview) .panel { background: var(--bg-solid); }
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), inset 0 0 0 0.5px var(--hair-strong);
 }
 @media (prefers-color-scheme: light) { .seg button.on { background: #fff; } }
+/* The shortcut row: the segmented control, with the "another app has it" note
+   underneath it rather than beside it. */
+.sc-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.sc-side .seg button { padding: 3px 7px; }
+.sc-note { font-size: 10px; line-height: 1.35; color: var(--c-warn); text-align: right; max-width: 190px; }
 .switch {
   appearance: none; -webkit-appearance: none;
   width: 32px; height: 19px; border-radius: 99px; flex: none;
@@ -302,6 +393,93 @@ html:not(.vibrancy):not(.preview) .panel { background: var(--bg-solid); }
 }
 .inline-btn:hover { text-decoration: underline; }
 .fineprint { font-size: 11px; color: var(--text-3); line-height: 1.5; padding: 2px 6px 4px; }
+
+/* ------------------------------------------------------------- colors */
+/* One row per service: its mark, its name, the hex it is set to, a few
+   presets, the swatch that opens the system colour picker, and a reset. */
+.group-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px 6px; font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3);
+}
+.mini {
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0; text-transform: none;
+  color: var(--text-2); padding: 2px 7px; border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+.mini:hover { background: var(--raise-hover); color: var(--text); }
+.color-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px 5px 12px; min-height: 36px;
+}
+.color-row + .color-row { box-shadow: inset 0 1px 0 var(--hair); }
+.color-row .tile { width: 22px; height: 22px; border-radius: 6.5px; }
+.color-row .tile i { width: 12px; height: 12px; }
+.color-row .tile img { width: 14px; height: 14px; }
+.color-name { font-size: 12.5px; font-weight: 550; }
+.color-hex {
+  margin-left: auto; font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+  font-size: 10px; letter-spacing: 0.02em; color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.presets { display: flex; gap: 5px; }
+.preset {
+  width: 11px; height: 11px; border-radius: 50%; background: var(--p);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.22), 0 1px 1.5px rgba(0, 0, 0, 0.22);
+  transition: transform 0.15s var(--ease), box-shadow 0.15s;
+}
+.preset:hover { transform: scale(1.2); }
+.preset.on { box-shadow: 0 0 0 1.5px var(--bg-solid), 0 0 0 2.5px var(--p); }
+/* The swatch is the native colour input, stretched over a painted square:
+   clicking it opens the system picker, no JS needed. */
+.swatch {
+  position: relative; width: 19px; height: 19px; border-radius: 6px; flex: none;
+  background: var(--sw); overflow: hidden;
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.24), 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.swatch:hover { box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.5), 0 1px 3px rgba(0, 0, 0, 0.35); }
+.swatch input {
+  position: absolute; inset: -6px; width: calc(100% + 12px); height: calc(100% + 12px);
+  opacity: 0; border: 0; padding: 0; background: none; cursor: pointer;
+}
+.color-reset {
+  width: 19px; height: 19px; border-radius: 6px; flex: none;
+  display: grid; place-items: center; color: var(--text-3);
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
+}
+.color-reset:hover { background: var(--raise-hover); color: var(--text); }
+.color-reset:disabled { opacity: 0.25; }
+.color-reset:disabled:hover { background: none; color: var(--text-3); }
+.color-reset svg { width: 12px; height: 12px; }
+
+/* ---------------------------------------------------------- edge dock */
+/* While the card is tucked against a screen edge, only a 12 px strip of the
+   window is on screen: the card fades away and this handle sits in that strip
+   on the side that is still visible. */
+.panel { transition: opacity 0.16s ease, transform 0.24s var(--ease); }
+html.edge-hidden .panel { opacity: 0; transform: scale(0.985); pointer-events: none; }
+.edge-handle {
+  position: fixed; top: 50%; width: 10px; height: 104px;
+  transform: translateY(-50%);
+  display: grid; place-items: center;
+  border-radius: 6px; color: rgba(24, 24, 27, 0.55);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(244, 244, 245, 0.62));
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.14), 0 0 14px rgba(110, 155, 255, 0.5);
+  opacity: 0; pointer-events: none; z-index: 10;
+  transition: opacity 0.18s ease, transform 0.22s var(--ease), box-shadow 0.2s;
+}
+/* Docked on the left screen edge, the window's right-hand strip is what stays
+   visible — and the other way round. */
+html.edge-left .edge-handle { right: 1px; }
+html.edge-right .edge-handle { left: 1px; }
+html.edge-right .edge-handle svg { transform: rotate(180deg); }
+html.edge-hidden .edge-handle { opacity: 1; pointer-events: auto; }
+.edge-handle:hover { box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.14), 0 0 18px rgba(110, 155, 255, 0.8); }
+.edge-handle:active { transform: translateY(-50%) scale(0.94); }
+.edge-handle svg { width: 7px; height: 16px; }
+@media (prefers-color-scheme: light) {
+  .edge-handle { color: rgba(24, 24, 27, 0.5); }
+}
 
 /* ------------------------------------------------------------- footer */
 .bottom {

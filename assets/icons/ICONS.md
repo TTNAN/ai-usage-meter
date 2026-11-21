@@ -7,9 +7,14 @@
 | `claude.svg` | Claude (Anthropic) | Simple Icons — https://cdn.simpleicons.org/claude |
 | `openai.svg` / `codex.svg` | OpenAI | Simple Icons v13 — https://cdn.jsdelivr.net/npm/simple-icons@13/icons/openai.svg |
 | `grok.png` | Grok / xAI | Official x.ai favicon, background made transparent, mark recoloured white |
+| `gemini.svg` | Google Gemini | Official 2025 icon, Wikimedia Commons `File:Google_Gemini_icon_2025.svg` (the four-colour spark shown on gemini.google.com) |
+| `copilot.svg` | GitHub Copilot | GitHub Primer Octicons `copilot-24.svg` — https://unpkg.com/@primer/octicons/build/svg/copilot-24.svg |
 
-In the app (`src/icons/`) each mark is used as a CSS mask and drawn white on
-a small tile, so the shapes are unchanged.
+In the app (`src/icons/`) the single-colour marks (Claude, OpenAI, Copilot) are
+used as CSS masks and drawn white on a small tile, so the shapes are unchanged.
+Gemini keeps its own four colours, so it is an `<img>` on a near-white tile —
+that is what makes the spark read at 17 px. The same files live in
+`assets/icons/` for the README and for anyone re-using them.
 
 ## App icon and tray icon (original, this project)
 
@@ -18,10 +23,13 @@ a small tile, so the shapes are unchanged.
   `src-tauri/icons/*` (icns, ico, png) are rendered from the same design.
 - The menu-bar / tray icon is **drawn at runtime** (`src-tauri/src/tray_icon.rs`):
   three tiny bars filled to the share of each quota that is left. On macOS it
-  is a template image, so it follows light and dark menu bars.
+  is a template image, so it follows light and dark menu bars; on Windows and
+  Linux each bar uses its service's accent, including a colour picked in
+  Settings (`set_custom_colors` → `tray_icon::render`).
 
 ## Trademark
 
 Claude is a trademark of Anthropic. ChatGPT / OpenAI / Codex are trademarks of
-OpenAI. Grok / xAI are trademarks of xAI. Brand marks are used only to
+OpenAI. Grok / xAI are trademarks of xAI. Gemini / Google are trademarks of
+Google. GitHub Copilot is a trademark of GitHub. Brand marks are used only to
 identify the service each row refers to and imply no endorsement.

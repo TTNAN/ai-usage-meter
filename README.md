@@ -4,7 +4,7 @@
 
 # AI Usage Meter
 
-**Claude、ChatGPT（Codex）、Grok 的订阅额度，常驻菜单栏，一眼看清。**
+**Claude、ChatGPT（Codex）、Grok、Gemini、GitHub Copilot 的订阅额度，常驻菜单栏，一眼看清。**
 
 中文 · [English](./README_EN.md)
 
@@ -20,22 +20,26 @@
 
 </div>
 
-写代码写到一半被「额度用完」打断？AI Usage Meter 把三家的 5 小时窗口、周额度和重置倒计时放进菜单栏，**不用打开网页、不用粘贴 Cookie、不经过任何服务器**。
+写代码写到一半被「额度用完」打断？AI Usage Meter 把五家的 5 小时窗口、周额度、模型额度和重置倒计时放进菜单栏，**不用打开网页、不用粘贴 Cookie、不经过任何服务器**。
 
 ## 亮点
 
-- **一眼看清最紧张的那一个** — 三环总览 + 大号数字，直接告诉你哪家额度最先见底、多久后重置。
-- **菜单栏图标本身就是仪表** — 三根小电量条实时显示各家剩余额度；macOS 上还可以在图标旁直接显示百分比。
-- **每个窗口都看得到** — Claude 的 5 小时 / 本周（以及 Opus、Sonnet 单独额度）、ChatGPT 里 Codex 的 5 小时 / 本周、Grok 的计费周期，各自带倒计时。
-- **订阅档位** — 自动识别 Max、Pro、Plus、SuperGrok 等档位。
-- **零配置** — 直接复用 ChatGPT 桌面版（Codex）、Claude Code、Grok Build 已有的登录；只用 Claude / Grok 网页版或 App？在设置里登录一次账号就行。
+- **一眼看清最紧张的那一个** — 同心环总览 + 大号数字，直接告诉你哪家额度最先见底、多久后重置。连上几家就画几环：3 家是经典三环，4–5 家会自动加密环数、收细描边，一家都不落下。
+- **菜单栏图标本身就是仪表** — 三根小电量条实时显示额度最紧的三个服务（16px 的图标放三根最清楚）；macOS 上还可以在图标旁直接显示百分比。
+- **每个窗口都看得到** — Claude 的 5 小时 / 本周（以及 Opus、Sonnet 单独额度）、ChatGPT 里 Codex 的 5 小时 / 本周、Grok 的计费周期、Gemini 的 Pro / Flash 额度、Copilot 的高级请求和对话额度，各自带倒计时。
+- **额度在往哪走也看得见** — 每行记一小段本机历史，用一条 36×12 的迷你折线画出走势；按最近的速度估算「约多久用完」，只在真的会在重置前来得及用完时才写出来，安静的额度不多占一行。
+- **全局快捷键** — 默认 `⌘⇧U` / `Ctrl+Shift+U`，在任何应用里都能唤出或收起弹窗；设置里可换成 `⌘⇧A` 或关掉，被别的应用占用时会如实说明。
+- **订阅档位** — 自动识别 Max、Pro、Plus、SuperGrok、Ultra、Individual 等档位。
+- **零配置** — 直接复用 ChatGPT 桌面版（Codex）、Claude Code、Grok Build、Gemini CLI / Antigravity、GitHub CLI / Copilot CLI 已有的登录；只用 Claude / Grok 网页版或 App？在设置里登录一次账号就行。Gemini 的访问令牌一小时就过期，应用会拿 refresh token 自己续上并写回 `~/.gemini/oauth_creds.json`，不用再跑一次 `gemini`。
 - **实时跟着变** — 后台每 1 到 5 分钟自动重读，你在网页、App、命令行哪里用掉的额度都会同步显示。
 - **原生质感** — macOS 原生毛玻璃弹窗、跟随系统深浅色、点击图标弹出、失焦自动收起；Windows 上从托盘弹出。
+- **拖到哪就在哪，可贴边** — 按住标题栏或空白处可以拖到屏幕任意位置；拖到左／右边缘松手就吸附上去，失焦时平滑滑出屏幕，只留一条 12px 的小把手，点它（或点菜单栏图标）再滑回来。设置里的「贴边自动收起」可以关掉。
+- **自定义服务配色** — 「设置 → 服务配色」一行一个服务：点色块用系统取色器自选，或点旁边的预设色，同心环、进度条和强调色立刻跟着变；Windows / Linux 的托盘小条也会用同一套颜色。点 ↺ 或「全部恢复」回到各服务原本的配色。
 - **中英双语** — 跟随系统语言，也可在设置里切换。
 - **安静可靠** — 后台低频轮询、手动刷新有限速；单次请求失败会保留上次读数并标注，绝不编造数字。
 - **轻** — Tauri v2 + 原生 HTML/CSS/JS，没有 Node 依赖，没有前端打包器。
 
-<p align="center"><img src="docs/states.png" alt="中文界面、设置、首次启动和浅色模式" width="880" /></p>
+<p align="center"><img src="docs/states.png" alt="中文界面、服务配色、首次启动和浅色模式" width="880" /></p>
 
 ## 安装
 
@@ -50,6 +54,9 @@
 xattr -d com.apple.quarantine "/Applications/AI Usage Meter.app"
 ```
 
+> [!TIP]
+> 用 Homebrew 安装 cask 时加上 `--no-quarantine`，效果和上面这行命令相同，不必再手动执行。
+
 然后登录你在用的工具（用哪个登哪个，没登录的会显示「未连接」）：
 
 | 服务 | 最简单的方式 | 也可以 |
@@ -57,27 +64,34 @@ xattr -d com.apple.quarantine "/Applications/AI Usage Meter.app"
 | Claude | 点 Claude 一行的「登录账号」（或 设置 → Claude 账号），登录 claude.ai | 已装 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 的话自动读取 |
 | ChatGPT（Codex 额度） | 在 [ChatGPT 桌面版](https://openai.com/chatgpt/download/) 里打开 Codex 并登录 | [Codex CLI](https://github.com/openai/codex) `codex login` |
 | Grok | 点 Grok 一行的「登录账号」（或 设置 → Grok 账号），登录 grok.com | 已装 [Grok Build](https://docs.x.ai/build/overview) 的话自动读取 |
+| Gemini | 登录一次 [Gemini CLI](https://github.com/google-gemini/gemini-cli)（运行 `gemini`） | 用 Google Antigravity 登录过的账号同样自动读取 |
+| GitHub Copilot | 运行 `gh auth login`（GitHub CLI） | 已装 Copilot CLI 并用它登录过的话自动读取 |
 
 > Claude 网页版、桌面版、手机版和 Claude Code 共用同一份额度；Grok 网页版、App 和 Grok Build 也共用同一个每周额度池。所以登录任意一处，看到的都是同一个数字。登录窗口里如果 Google 登录被拦截，换邮箱登录即可。
+>
+> Gemini 用 `gemini-api-key` 或 Vertex AI 方式登录时没有可查的额度接口，这一行会说明原因，改用 Google 账号登录即可；Copilot 读取的是 GitHub 账号的 Copilot 订阅（个人版、商业版都行），订阅失效时会提示续订。
 
 ## 快捷键
 
 | 按键 | 作用 |
 | --- | --- |
+| `⌘⇧U` / `Ctrl+Shift+U` | 全局快捷键：在任何应用里唤出或收起弹窗（设置里可换 `⌘⇧A` 或关掉） |
 | `⌘R` / `Ctrl R` | 刷新 |
 | `⌘,` | 打开设置 |
-| `Esc` | 收起弹窗 |
+| `Esc` | 收起弹窗（贴边时收回屏幕边缘） |
 | `⌘Q` / `Ctrl Q` | 退出 |
 
 ## 工作原理
 
-三家目前都没有公开的「订阅额度」API，所以 AI Usage Meter 读取各家官方应用自己在用的接口：要么复用官方 CLI / 桌面版已保存在本机的登录，要么用你在应用里登录的网页账号。
+这几家目前都没有公开的「订阅额度」API，所以 AI Usage Meter 读取各家官方应用自己在用的接口：要么复用官方 CLI / 桌面版已保存在本机的登录，要么用你在应用里登录的网页账号。
 
 | 服务 | 接口 | 凭证位置 | 轮询 |
 | --- | --- | --- | --- |
 | Claude | `GET api.anthropic.com/api/oauth/usage` | macOS 钥匙串 `Claude Code-credentials`，或 `~/.claude/.credentials.json` | 5 分钟 |
 | ChatGPT（Codex） | `GET chatgpt.com/backend-api/wham/usage`；读不到登录或请求失败时，改读 `~/.codex/sessions` 里最近一次会话记录的额度 | `~/.codex/auth.json`（ChatGPT 桌面版与 Codex CLI 共用，支持 `$CODEX_HOME`） | 1 分钟 |
 | Grok | `GET cli-chat-proxy.grok.com/v1/billing` | `~/.grok/auth.json`（支持 `$GROK_HOME`） | 5 分钟 |
+| Gemini | `POST cloudcode-pa.googleapis.com/v1internal:loadCodeAssist` 取档位，`:retrieveUserQuota` 取每个模型的剩余额度；令牌过期时先 `POST oauth2.googleapis.com/token` 续期再重试一次 | `~/.gemini/oauth_creds.json`（支持 `$GEMINI_HOME`，Gemini CLI / Antigravity 共用） | 5 分钟 |
+| GitHub Copilot | `GET api.github.com/copilot_internal/user` | GitHub OAuth Token：`$GH_TOKEN` / `$GITHUB_TOKEN`、`gh` 的 `hosts.yml`、Copilot CLI 的 `hosts.json`，最后回退到 `gh auth token` | 5 分钟 |
 | Claude 网页账号 | `GET claude.ai/api/organizations/{org}/usage` | 应用内登录窗口的 claude.ai 会话 | 3 分钟 |
 | Grok 网页账号 | grok.com 用量页自己请求的 `GetGrokCreditsConfig` | 应用内登录窗口的 grok.com 会话 | 5 分钟 |
 
@@ -91,8 +105,10 @@ xattr -d com.apple.quarantine "/Applications/AI Usage Meter.app"
 ## 隐私
 
 - 凭证只在发请求的那一刻从本机读取，只发给它所属的那家服务，不落盘、不上传。
-- 只发查询用量的只读请求，不会改动你的账号或 CLI 配置文件。
-- 没有服务器、没有统计、没有遥测。代码就这几百行，欢迎审阅：[`providers.rs`](src-tauri/src/providers.rs)、[`web.rs`](src-tauri/src/web.rs)。
+- 只发查询用量的请求（Gemini 用的是官方 CLI 自己的两个 POST 查询接口），不会改动你的账号或 CLI 配置文件。唯一会写回本机的，是 Gemini 令牌续期后 `~/.gemini/oauth_creds.json` 里的 `access_token` 和 `expiry_date` 两个字段，其余内容原样保留。
+- Gemini 续期用的是 Gemini CLI 自己的 OAuth 客户端，它不属于这个项目，因此本仓库不收录：续期时从你本机已安装的 `@google/gemini-cli` 包里读取（`oauth_creds.json` 自带时就先用它自己的），也可以用 `GEMINI_CLI_OAUTH_CLIENT_ID` / `GEMINI_CLI_OAUTH_CLIENT_SECRET` 指定。找不到就只显示「请重新登录」，不会去猜。
+- 用量走势只存在本应用自己的 `localStorage` 里，不经过网络。
+- 没有服务器、没有统计、没有遥测。代码就这几千行，欢迎审阅：[`crates/ai-usage-core/src/providers.rs`](src-tauri/crates/ai-usage-core/src/providers.rs)、[`web.rs`](src-tauri/src/web.rs)。
 
 ## 风险说明
 
@@ -104,8 +120,12 @@ xattr -d com.apple.quarantine "/Applications/AI Usage Meter.app"
 
 ```bash
 python3 -m http.server -d src 8000
-# http://localhost:8000/?state=empty   首次启动
-# http://localhost:8000/?view=settings 设置页
+# http://localhost:8000/               默认：五家演示数据（含走势与预计用完）
+# http://localhost:8000/?state=trend   同上，重点看迷你走势与「约多久用完」
+# http://localhost:8000/?state=empty    首次启动
+# http://localhost:8000/?state=mixed    混合状态（未连接 / 登录过期）
+# http://localhost:8000/?state=four     只连四家（四环总览）
+# http://localhost:8000/?view=settings  设置页（含服务配色与全局快捷键）
 ```
 
 构建桌面应用需要 Rust stable：
@@ -114,17 +134,26 @@ python3 -m http.server -d src 8000
 cargo install tauri-cli --version "^2"
 cargo tauri dev                    # 开发
 cargo tauri build                  # 打包
-cd src-tauri && cargo test         # 单元测试
 AI_USAGE_METER_MOCK=1 cargo tauri dev   # 用演示数据运行
 ```
 
-想支持更多服务（Gemini CLI、Cursor、Copilot…）？欢迎提 [Issue](https://github.com/TTNAN/ai-usage-meter/issues) 或 PR：每个服务只是 `providers.rs` 里的一个函数。
+后端分成两部分：每个应用自己的 `src-tauri/src/`（托盘、窗口、命令、轮询、网页登录），和两边共用的核心库 `src-tauri/crates/ai-usage-core/`（五家 provider、低额度提醒规则、托盘图标、贴边吸附）。核心库在每个项目里各存一份完全相同的副本，项目才能单独打包；改完用 `./sync-core.sh` 同步、`./sync-core.sh --check` 校验。
+
+```bash
+cd src-tauri/crates/ai-usage-core && cargo test   # 核心库单元测试（58 项）
+cd src-tauri && cargo test                        # 应用层（需要 Tauri 的系统依赖）
+```
+
+想支持更多服务（Cursor、Windsurf…）？欢迎提 [Issue](https://github.com/TTNAN/ai-usage-meter/issues) 或 PR：每个服务只是 `ai-usage-core/src/providers.rs` 里的一个函数。
 
 ## 路线图
 
-- [ ] 额度即将用尽时的系统通知
-- [ ] 更多服务：Gemini CLI、GitHub Copilot、Cursor
-- [ ] 用量历史迷你走势图
+- [x] 额度即将用尽时的系统通知
+- [x] 更多服务：Gemini CLI / Antigravity、GitHub Copilot
+- [x] 用量走势迷你折线与「预计多久用完」
+- [x] 全局快捷键（`⌘⇧U` / `Ctrl+Shift+U`）
+- [x] 与 Dock 版共用一套后端核心（`ai-usage-core`）
+- [ ] 更多服务：Cursor、Windsurf
 - [ ] Linux 托盘
 - [ ] macOS 签名与公证
 
@@ -145,4 +174,4 @@ AI_USAGE_METER_MOCK=1 cargo tauri dev   # 用演示数据运行
 
 ## 许可证与商标
 
-[MIT](./LICENSE)。Claude 是 Anthropic 的商标；OpenAI / ChatGPT / Codex 是 OpenAI 的商标；Grok / xAI 是 xAI 的商标。品牌图标仅用于标识对应服务，不代表任何背书。截图使用演示数据。
+[MIT](./LICENSE)。Claude 是 Anthropic 的商标；OpenAI / ChatGPT / Codex 是 OpenAI 的商标；Grok / xAI 是 xAI 的商标；Gemini / Google 是 Google 的商标；GitHub Copilot 是 GitHub 的商标。品牌图标仅用于标识对应服务，不代表任何背书：Gemini 用的是 Google 官方四色星芒（Wikimedia Commons `Google_Gemini_icon_2025.svg`），Copilot 用的是 GitHub Primer Octicons 的 `copilot-24.svg`，其余见图标来源说明。截图使用演示数据。

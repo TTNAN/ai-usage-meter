@@ -1,19 +1,20 @@
 //! AI Usage Meter — a menu-bar (macOS) / system-tray (Windows) popover that
-//! shows how much Claude, ChatGPT (Codex) and Grok quota you have left.
+//! shows how much Claude, ChatGPT (Codex), Grok, Gemini and GitHub Copilot
+//! quota you have left.
 //!
-//! * `providers` talks to each service (read-only, reusing CLI logins).
-//! * `tray_icon` draws the live three-bar icon.
-//! * This file wires the tray, the popover window and a background poller.
+//! * `ai-usage-core` talks to each service (read-only, reusing CLI logins),
+//!   draws the live tray icon and decides the low-quota notifications.
+//! * This file wires the tray, the popover window, the global shortcut and a
+//!   background poller.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod providers;
-mod tray_icon;
 mod web;
 
-use providers::{ServiceStatus, State as SvcState};
+use ai_usage_core::providers::{ServiceStatus, State as SvcState};
+use ai_usage_core::{edge, notify, providers, tray_icon};
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{
@@ -24,9 +25,13 @@ use tauri::{
     WindowEvent,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri_plugin_notification::NotificationExt;
 
 const WINDOW_WIDTH: f64 = 372.0;
 const TICK: Duration = Duration::from_secs(30);
+/// ⌘⇧U on macOS, Ctrl+Shift+U elsewhere. The UI can switch or turn it off.
+const DEFAULT_SHORTCUT: &str = "CommandOrControl+Shift+U";
 
 /// Minimum seconds between automatic fetches, per provider.
 /// Claude's usage endpoint rate-limits aggressively, so it gets the most room.
@@ -40,7 +45,9 @@ fn poll_interval_secs(id: &str) -> i64 {
 const MANUAL_FLOOR_SECS: i64 = 20;
 
 fn mock_mode() -> bool {
-    std::env::var("AI_USAGE_METER_MOCK").map(|v| v == "1").unwrap_or(false)
+    std::env::var("AI_USAGE_METER_MOCK")
+        .map(|v| v == "1")
+        .unwrap_or(false)
 }
 
 fn now_ms() -> i64 {
@@ -62,13 +69,45 @@ struct AppState {
     web_last_poll: Mutex<HashMap<&'static str, i64>>,
     web_last_report: Mutex<HashMap<&'static str, i64>>,
     web_use_home: Mutex<HashSet<&'static str>>,
+    /// Which generation of hidden worker each site is on, so a deferred close
+    /// after a report can't take down a window a newer poll just took over.
+    web_worker_epoch: Mutex<HashMap<&'static str, u64>>,
     last_fetch: Mutex<HashMap<&'static str, i64>>,
     /// Tray icon rectangle (physical px) from the last click, for anchoring.
     anchor: Mutex<Option<(f64, f64, f64, f64)>>,
     /// "icon" (bars only) or "percent" (bars + tightest % in the menu bar).
     tray_mode: Mutex<String>,
+    /// The "Low-quota alerts" switch in Settings (on unless turned off).
+    notify_enabled: AtomicBool,
+    /// The interface language the popover resolved ("zh" or "en"), so the
+    /// low-quota notifications are written in it too. "auto" is settled in
+    /// the UI, which sends the answer down with `set_lang`.
+    notify_lang: Mutex<String>,
+    /// What has already been announced, so one reset window is announced once.
+    alerts: Mutex<notify::Alerts>,
     /// When the popover last hid because it lost focus.
     blur_hidden_at: AtomicI64,
+    /// Accent colours picked in Settings, for the Windows / Linux tray bars.
+    custom_colors: Mutex<tray_icon::CustomColors>,
+    /// Which screen edge the window is tucked against (`None` = a plain tray
+    /// popover that just hides on blur).
+    edge_dock: Mutex<edge::Dock>,
+    /// Whether it is currently slid mostly off-screen.
+    edge_hidden: AtomicBool,
+    /// The "Tuck at screen edge" switch (on unless turned off).
+    edge_enabled: AtomicBool,
+    /// One slide at a time; window moves during a slide are ours.
+    edge_anim: AtomicBool,
+    /// Bumped whenever the user moves the window, so the watcher below can tell
+    /// a finished drag from one still in progress.
+    move_seq: AtomicI64,
+    /// The `move_seq` value already settled, so each drag is judged once.
+    move_settled: AtomicI64,
+    /// Where our own `set_position` is putting the window, so the `Moved` event
+    /// it causes is not mistaken for a drag.
+    expected_pos: Mutex<Option<(f64, f64)>>,
+    /// The global shortcut currently held, or `None` when it is switched off.
+    shortcut: Mutex<Option<String>>,
 }
 
 // ------------------------------------------------------------- fetching
@@ -92,7 +131,13 @@ fn fetch_due(state: &AppState, force: bool) -> Vec<ServiceStatus> {
             .filter(|id| {
                 let since = now - last.get(id).copied().unwrap_or(0);
                 let cached = cli.contains_key(id);
-                !cached || since >= if force { MANUAL_FLOOR_SECS } else { poll_interval_secs(id) }
+                !cached
+                    || since
+                        >= if force {
+                            MANUAL_FLOOR_SECS
+                        } else {
+                            poll_interval_secs(id)
+                        }
             })
             .collect()
     };
@@ -106,28 +151,35 @@ fn fetch_due(state: &AppState, force: bool) -> Vec<ServiceStatus> {
             .iter()
             .map(|id| s.spawn(move || providers::fetch_one(id)))
             .collect();
-        handles.into_iter().filter_map(|h| h.join().ok().flatten()).collect()
+        handles
+            .into_iter()
+            .filter_map(|h| h.join().ok().flatten())
+            .collect()
     });
 
     {
-    let mut cli = state.cli.lock().unwrap();
-    let mut last = state.last_fetch.lock().unwrap();
-    for f in fresh {
-        last.insert(f.id, now);
-        let merged = match cli.get(f.id) {
-            // One failed request shouldn't blank a row that was fine a
-            // minute ago: keep the last good numbers, clearly marked stale.
-            Some(old)
-                if f.state == SvcState::Unavailable
-                    && old.state == SvcState::Connected
-                    && now - old.fetched_at < 30 * 60 =>
-            {
-                ServiceStatus { stale: true, note: f.note.clone(), ..old.clone() }
-            }
-            _ => f,
-        };
-        cli.insert(merged.id, merged);
-    }
+        let mut cli = state.cli.lock().unwrap();
+        let mut last = state.last_fetch.lock().unwrap();
+        for f in fresh {
+            last.insert(f.id, now);
+            let merged = match cli.get(f.id) {
+                // One failed request shouldn't blank a row that was fine a
+                // minute ago: keep the last good numbers, clearly marked stale.
+                Some(old)
+                    if f.state == SvcState::Unavailable
+                        && old.state == SvcState::Connected
+                        && now - old.fetched_at < 30 * 60 =>
+                {
+                    ServiceStatus {
+                        stale: true,
+                        note: f.note.clone(),
+                        ..old.clone()
+                    }
+                }
+                _ => f,
+            };
+            cli.insert(merged.id, merged);
+        }
     }
     rebuild_cache(state)
 }
@@ -180,7 +232,54 @@ fn refresh_and_broadcast(app: &AppHandle, force: bool) -> Vec<ServiceStatus> {
     let status = fetch_due(&state, force);
     update_tray(app, &status);
     let _ = app.emit("usage", &status);
+    low_quota_alerts(app, &status);
     status
+}
+
+/// One native notification when a quota runs low. Only live numbers count:
+/// demo data, stale readings and services that aren't connected never notify.
+fn low_quota_alerts(app: &AppHandle, status: &[ServiceStatus]) {
+    if mock_mode() {
+        return;
+    }
+    let state: State<AppState> = app.state();
+    if !state.notify_enabled.load(Ordering::Relaxed) {
+        return;
+    }
+    let readings: Vec<notify::Reading> = status
+        .iter()
+        .filter(|s| s.state == SvcState::Connected && !s.stale)
+        .filter_map(|s| {
+            // The window that binds first, which is the row's bold number.
+            let w = s
+                .windows
+                .iter()
+                .max_by(|a, b| a.used_percent.total_cmp(&b.used_percent))?;
+            Some(notify::Reading {
+                id: s.id,
+                label: s.label,
+                window: w.kind,
+                left: (100.0 - w.used_percent).clamp(0.0, 100.0),
+                resets_at: w.resets_at,
+            })
+        })
+        .collect();
+    let due = {
+        let lang = state.notify_lang.lock().unwrap().clone();
+        state
+            .alerts
+            .lock()
+            .unwrap()
+            .due(providers::now_unix(), &readings, &lang)
+    };
+    for alert in due {
+        let _ = app
+            .notification()
+            .builder()
+            .title(alert.title)
+            .body(alert.body)
+            .show();
+    }
 }
 
 // ----------------------------------------------------------------- tray
@@ -208,16 +307,37 @@ fn tooltip(status: &[ServiceStatus]) -> String {
 }
 
 fn update_tray(app: &AppHandle, status: &[ServiceStatus]) {
-    let Some(tray) = app.tray_by_id("main") else { return };
-    let mut left = [None; 3];
-    for s in status {
-        if let Some(i) = providers::IDS.iter().position(|id| *id == s.id) {
-            left[i] = left_percent(s);
-        }
-    }
+    let Some(tray) = app.tray_by_id("main") else {
+        return;
+    };
+    // Three bars for the three services closest to running out; see
+    // `tray_icon::pick_slots`.
+    let items: Vec<(&'static str, Option<f64>)> = providers::IDS
+        .iter()
+        .map(|id| {
+            (
+                *id,
+                status.iter().find(|s| s.id == *id).and_then(left_percent),
+            )
+        })
+        .collect();
+    let ids = tray_icon::pick_slots(&items);
+    let left: [Option<f64>; tray_icon::SLOTS] = std::array::from_fn(|i| {
+        ids[i].and_then(|id| items.iter().find(|(item, _)| *item == id)?.1)
+    });
     let template = cfg!(target_os = "macos");
-    let rgba = tray_icon::render(left, template);
-    let _ = tray.set_icon(Some(Image::new_owned(rgba, tray_icon::SIZE, tray_icon::SIZE)));
+    let custom = app
+        .state::<AppState>()
+        .custom_colors
+        .lock()
+        .unwrap()
+        .clone();
+    let rgba = tray_icon::render(left, ids, template, &custom);
+    let _ = tray.set_icon(Some(Image::new_owned(
+        rgba,
+        tray_icon::SIZE,
+        tray_icon::SIZE,
+    )));
     #[cfg(target_os = "macos")]
     let _ = tray.set_icon_as_template(true);
     let _ = tray.set_tooltip(Some(tooltip(status)));
@@ -226,15 +346,154 @@ fn update_tray(app: &AppHandle, status: &[ServiceStatus]) {
     {
         let state: State<AppState> = app.state();
         let mode = state.tray_mode.lock().unwrap().clone();
-        let tightest = left.iter().flatten().cloned().fold(None, |a: Option<f64>, v| {
-            Some(a.map_or(v, |a| a.min(v)))
-        });
+        let tightest = left
+            .iter()
+            .flatten()
+            .cloned()
+            .fold(None, |a: Option<f64>, v| Some(a.map_or(v, |a| a.min(v))));
         let title = match (mode.as_str(), tightest) {
             ("percent", Some(v)) => Some(format!("{v:.0}%")),
             _ => None,
         };
         let _ = tray.set_title(title);
     }
+}
+
+// ------------------------------------------------------------------ edge
+//
+// The window can be dragged anywhere and tucked against the left or right
+// screen edge. While tucked it slides almost off the screen on blur, leaving a
+// 12 px handle, and slides back in when that handle (or the tray icon) is
+// clicked. `edge` holds the arithmetic; this section does the moving.
+
+/// Physical size and position of the window plus the monitor it is on.
+struct Geometry {
+    x: f64,
+    y: f64,
+    w: f64,
+    mx: f64,
+    mw: f64,
+    scale: f64,
+}
+
+fn geometry(window: &WebviewWindow) -> Option<Geometry> {
+    let pos = window.outer_position().ok()?;
+    let size = window.outer_size().ok()?;
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let monitor = window.current_monitor().ok().flatten()?;
+    let (mp, ms) = (monitor.position(), monitor.size());
+    Some(Geometry {
+        x: pos.x as f64,
+        y: pos.y as f64,
+        w: size.width as f64,
+        mx: mp.x as f64,
+        mw: ms.width as f64,
+        scale,
+    })
+}
+
+/// Move the window and remember that we did, so the resulting `Moved` event is
+/// not read as a drag.
+fn place(window: &WebviewWindow, state: &AppState, x: f64, y: f64) {
+    let (x, y) = (x.round(), y.round());
+    *state.expected_pos.lock().unwrap() = Some((x, y));
+    let _ = window.set_position(PhysicalPosition::new(x as i32, y as i32));
+}
+
+fn emit_edge(app: &AppHandle) {
+    let state: State<AppState> = app.state();
+    let dock = *state.edge_dock.lock().unwrap();
+    let payload = serde_json::json!({
+        "edge": dock.as_str(),
+        "hidden": state.edge_hidden.load(Ordering::Relaxed),
+        "enabled": state.edge_enabled.load(Ordering::Relaxed),
+    });
+    let _ = app.emit("edge-state", payload);
+}
+
+/// A drag has come to rest: snap against an edge the window was dropped near,
+/// let go when it was carried inland, and keep the edge otherwise.
+fn settle_window(app: &AppHandle) {
+    let state: State<AppState> = app.state();
+    if !state.edge_enabled.load(Ordering::Relaxed) || state.edge_anim.load(Ordering::Relaxed) {
+        return;
+    }
+    let Some(window) = main_window(app) else {
+        return;
+    };
+    if !window.is_visible().unwrap_or(false) {
+        return;
+    }
+    let Some(g) = geometry(&window) else { return };
+    let before = *state.edge_dock.lock().unwrap();
+    let after = edge::next(before, g.x, g.w, g.mx, g.mw, g.scale);
+    if after != before {
+        *state.edge_dock.lock().unwrap() = after;
+        state.edge_hidden.store(false, Ordering::Relaxed);
+        emit_edge(app);
+    }
+    let Some(x) = docked_x(&state, after, &g) else {
+        return;
+    };
+    if (g.x - x).abs() > 0.5 {
+        place(&window, &state, x, g.y);
+    }
+}
+
+/// Where a docked window belongs right now (tucked or out), `None` when it is
+/// not docked at all.
+fn docked_x(state: &AppState, dock: edge::Dock, g: &Geometry) -> Option<f64> {
+    if !dock.is_docked() {
+        return None;
+    }
+    Some(if state.edge_hidden.load(Ordering::Relaxed) {
+        edge::hidden_x(dock, g.w, g.mx, g.mw, g.scale)
+    } else {
+        edge::visible_x(dock, g.w, g.mx, g.mw)
+    })
+}
+
+/// Slide the window out of view (`tuck`) or back in, one eased frame at a time.
+fn slide_window(app: &AppHandle, tuck: bool) {
+    let state: State<AppState> = app.state();
+    let dock = *state.edge_dock.lock().unwrap();
+    if !dock.is_docked() {
+        return;
+    }
+    if state.edge_anim.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    let Some(window) = main_window(app) else {
+        state.edge_anim.store(false, Ordering::Relaxed);
+        return;
+    };
+    let Some(g) = geometry(&window) else {
+        state.edge_anim.store(false, Ordering::Relaxed);
+        return;
+    };
+    let out = edge::visible_x(dock, g.w, g.mx, g.mw);
+    let tucked = edge::hidden_x(dock, g.w, g.mx, g.mw, g.scale);
+    let (from, to) = if tuck {
+        (g.x.min(out), tucked)
+    } else {
+        (g.x, out)
+    };
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        let state: State<AppState> = handle.state();
+        // Tell the UI first: the card fades while the window travels.
+        state.edge_hidden.store(tuck, Ordering::Relaxed);
+        emit_edge(&handle);
+        for x in edge::frames(from, to) {
+            place(&window, &state, x as f64, g.y);
+            std::thread::sleep(Duration::from_millis(edge::FRAME_MS));
+        }
+        state.edge_anim.store(false, Ordering::Relaxed);
+        if !tuck {
+            let _ = window.set_focus();
+        }
+        emit_edge(&handle);
+    });
 }
 
 // --------------------------------------------------------------- window
@@ -244,13 +503,17 @@ fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
 }
 
 /// Place the popover under the menu-bar icon (macOS) or above the tray
-/// icon (Windows taskbar), clamped to the screen it is on.
+/// icon (Windows taskbar), clamped to the screen it is on. A docked window is
+/// left at its edge instead.
 fn position_window(app: &AppHandle, window: &WebviewWindow) {
-    let Ok(size) = window.outer_size() else { return };
+    let Ok(size) = window.outer_size() else {
+        return;
+    };
     let (w, h) = (size.width as f64, size.height as f64);
     let scale = window.scale_factor().unwrap_or(1.0);
     let margin = 8.0 * scale;
-    let anchor = *app.state::<AppState>().anchor.lock().unwrap();
+    let state: State<AppState> = app.state();
+    let anchor = *state.anchor.lock().unwrap();
 
     let monitors = window.available_monitors().unwrap_or_default();
     let point = anchor.map(|(x, y, aw, _)| (x + aw / 2.0, y));
@@ -271,10 +534,31 @@ fn position_window(app: &AppHandle, window: &WebviewWindow) {
     let (mx, my) = (monitor.position().x as f64, monitor.position().y as f64);
     let (mw, mh) = (monitor.size().width as f64, monitor.size().height as f64);
 
+    // Docked: the edge decides, not the tray icon.
+    let dock = *state.edge_dock.lock().unwrap();
+    if dock.is_docked() {
+        let x = if state.edge_hidden.load(Ordering::Relaxed) {
+            edge::hidden_x(dock, w, mx, mw, scale)
+        } else {
+            edge::visible_x(dock, w, mx, mw)
+        };
+        let y = window
+            .outer_position()
+            .map(|p| p.y as f64)
+            .unwrap_or(my + margin)
+            .clamp(my, (my + mh - h).max(my));
+        place(window, &state, x, y);
+        return;
+    }
+
     let (x, y) = match anchor {
         Some((ax, ay, aw, ah)) => {
             let x = ax + aw / 2.0 - w / 2.0;
-            let y = if ay < my + mh / 2.0 { ay + ah + margin * 0.5 } else { ay - h - margin * 0.5 };
+            let y = if ay < my + mh / 2.0 {
+                ay + ah + margin * 0.5
+            } else {
+                ay - h - margin * 0.5
+            };
             (x, y)
         }
         // Opened from the menu, before any click: top-right on macOS,
@@ -284,11 +568,24 @@ fn position_window(app: &AppHandle, window: &WebviewWindow) {
     };
     let x = x.clamp(mx + margin, (mx + mw - w - margin).max(mx + margin));
     let y = y.clamp(my, (my + mh - h).max(my));
-    let _ = window.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32));
+    place(window, &state, x, y);
 }
 
 fn show_window(app: &AppHandle) {
-    let Some(window) = main_window(app) else { return };
+    let Some(window) = main_window(app) else {
+        return;
+    };
+    let state: State<AppState> = app.state();
+    // Tucked away at an edge: come back out instead of jumping under the tray.
+    let tucked =
+        state.edge_hidden.load(Ordering::Relaxed) && state.edge_dock.lock().unwrap().is_docked();
+    if tucked {
+        let _ = window.show();
+        let _ = window.set_focus();
+        let _ = app.emit("popover-shown", ());
+        slide_window(app, false);
+        return;
+    }
     position_window(app, &window);
     let _ = window.show();
     let _ = window.set_focus();
@@ -296,18 +593,94 @@ fn show_window(app: &AppHandle) {
 }
 
 fn toggle_window(app: &AppHandle) {
-    let Some(window) = main_window(app) else { return };
+    let Some(window) = main_window(app) else {
+        return;
+    };
+    let state: State<AppState> = app.state();
+    let docked =
+        state.edge_enabled.load(Ordering::Relaxed) && state.edge_dock.lock().unwrap().is_docked();
     if window.is_visible().unwrap_or(false) {
-        let _ = window.hide();
+        if state.edge_hidden.load(Ordering::Relaxed) {
+            slide_window(app, false);
+        } else if docked {
+            // Docked and out: the tray tucks it back against the edge.
+            slide_window(app, true);
+        } else {
+            let _ = window.hide();
+        }
         return;
     }
     // Clicking the tray icon while the popover is open first blurs (and
     // hides) it; don't immediately re-open it on the same click.
-    let hidden_at = app.state::<AppState>().blur_hidden_at.load(Ordering::Relaxed);
+    let hidden_at = state.blur_hidden_at.load(Ordering::Relaxed);
     if now_ms() - hidden_at < 350 {
         return;
     }
     show_window(app);
+}
+
+// ------------------------------------------------------ global shortcut
+//
+// One key combination, held system-wide: ⌘⇧U / Ctrl+Shift+U unless the user
+// picks another or turns it off in Settings. It brings the popover out of the
+// edge it is tucked against, or puts it away again.
+
+/// Hold `keys` as the global shortcut, replacing whatever was held before.
+/// An empty string turns it off. A combination another app already owns comes
+/// back as an error — nothing crashes, and the previous shortcut stays gone
+/// only because the new one could not be registered.
+fn apply_shortcut(app: &AppHandle, keys: &str) -> Result<(), String> {
+    let state: State<AppState> = app.state();
+    let manager = app.global_shortcut();
+    let _ = manager.unregister_all();
+    *state.shortcut.lock().unwrap() = None;
+    let keys = keys.trim();
+    if keys.is_empty() || keys.eq_ignore_ascii_case("off") {
+        return Ok(());
+    }
+    manager
+        .on_shortcut(keys, |app, _shortcut, event| {
+            if event.state == ShortcutState::Pressed {
+                toggle_window_from_shortcut(app);
+            }
+        })
+        .map_err(|e| format!("{keys}: {e}"))?;
+    *state.shortcut.lock().unwrap() = Some(keys.to_string());
+    Ok(())
+}
+
+/// The shortcut's own toggle: it never advances the tray anchor, and it brings
+/// a window that is open but behind something to the front instead of hiding it.
+fn toggle_window_from_shortcut(app: &AppHandle) {
+    let Some(window) = main_window(app) else {
+        return;
+    };
+    let state: State<AppState> = app.state();
+    if !window.is_visible().unwrap_or(false) {
+        show_window(app);
+        return;
+    }
+    let tucked = state.edge_hidden.load(Ordering::Relaxed);
+    if tucked {
+        let _ = window.show();
+        let _ = window.set_focus();
+        let _ = app.emit("popover-shown", ());
+        slide_window(app, false);
+        return;
+    }
+    if !window.is_focused().unwrap_or(false) {
+        // Open but behind another app: the shortcut means "show me".
+        let _ = window.set_focus();
+        let _ = app.emit("popover-shown", ());
+        return;
+    }
+    // Visible and focused: put it away the way Esc does.
+    if state.edge_enabled.load(Ordering::Relaxed) && state.edge_dock.lock().unwrap().is_docked() {
+        slide_window(app, true);
+    } else {
+        let _ = window.hide();
+        state.blur_hidden_at.store(now_ms(), Ordering::Relaxed);
+    }
 }
 
 // ------------------------------------------------------------- commands
@@ -315,6 +688,33 @@ fn toggle_window(app: &AppHandle) {
 #[tauri::command]
 fn get_status(state: State<AppState>) -> Vec<ServiceStatus> {
     state.cache.lock().unwrap().clone()
+}
+
+/// The "Low-quota alerts" switch. Turning it back on re-arms the window the
+/// user is in, so the next low reading speaks once more.
+#[tauri::command]
+fn set_notify_enabled(state: State<AppState>, enabled: bool) {
+    let was = state.notify_enabled.swap(enabled, Ordering::Relaxed);
+    if enabled && !was {
+        state.alerts.lock().unwrap().clear();
+    }
+}
+
+/// "zh" or "en" — anything Chinese-looking becomes "zh", the rest "en".
+fn normalize_lang(lang: &str) -> &'static str {
+    if lang.trim().to_ascii_lowercase().starts_with("zh") {
+        "zh"
+    } else {
+        "en"
+    }
+}
+
+/// The popover tells the notifier which language it ended up showing (its
+/// "Auto" setting resolved against the system locale), so a low-quota
+/// notification arrives in the same language as the window it belongs to.
+#[tauri::command]
+fn set_lang(state: State<AppState>, lang: String) {
+    *state.notify_lang.lock().unwrap() = normalize_lang(&lang).to_string();
 }
 
 #[tauri::command]
@@ -330,7 +730,9 @@ async fn refresh_status(app: AppHandle) -> Result<Vec<ServiceStatus>, String> {
 /// The popover sizes itself to its content.
 #[tauri::command]
 fn set_height(app: AppHandle, height: f64) {
-    let Some(window) = main_window(&app) else { return };
+    let Some(window) = main_window(&app) else {
+        return;
+    };
     let height = height.clamp(160.0, 900.0);
     let _ = window.set_size(LogicalSize::new(WINDOW_WIDTH, height));
     if window.is_visible().unwrap_or(false) {
@@ -339,7 +741,68 @@ fn set_height(app: AppHandle, height: f64) {
 }
 
 #[tauri::command]
+fn set_custom_colors(app: AppHandle, colors: HashMap<String, String>) {
+    let state: State<AppState> = app.state();
+    let parsed: tray_icon::CustomColors = colors
+        .iter()
+        .filter_map(|(id, hex)| tray_icon::parse_hex(hex).map(|rgb| (id.clone(), rgb)))
+        .collect();
+    *state.custom_colors.lock().unwrap() = parsed;
+    let status = state.cache.lock().unwrap().clone();
+    update_tray(&app, &status);
+}
+
+/// The "Tuck at screen edge" switch. Turning it off brings a tucked window
+/// back out before it stops applying.
+#[tauri::command]
+fn set_edge_enabled(app: AppHandle, enabled: bool) {
+    let state: State<AppState> = app.state();
+    state.edge_enabled.store(enabled, Ordering::Relaxed);
+    if !enabled && state.edge_hidden.swap(false, Ordering::Relaxed) {
+        slide_window(&app, false);
+    }
+    emit_edge(&app);
+}
+
+/// What the UI needs to draw (or hide) its grab handle.
+#[tauri::command]
+fn edge_state(app: AppHandle) -> serde_json::Value {
+    let state: State<AppState> = app.state();
+    let dock = *state.edge_dock.lock().unwrap();
+    serde_json::json!({
+        "edge": dock.as_str(),
+        "hidden": state.edge_hidden.load(Ordering::Relaxed),
+        "enabled": state.edge_enabled.load(Ordering::Relaxed),
+    })
+}
+
+/// The grab handle (or the tray icon) asks a tucked window to slide back in.
+#[tauri::command]
+fn expand_docked(app: AppHandle) {
+    let state: State<AppState> = app.state();
+    if !state.edge_dock.lock().unwrap().is_docked() {
+        return;
+    }
+    let Some(window) = main_window(&app) else {
+        return;
+    };
+    let _ = window.show();
+    if state.edge_hidden.load(Ordering::Relaxed) {
+        slide_window(&app, false);
+    } else {
+        let _ = window.set_focus();
+    }
+}
+
+/// Esc: put the popover away. A docked window tucks back against its edge
+/// instead of vanishing, so the grab handle stays.
+#[tauri::command]
 fn hide_window(app: AppHandle) {
+    let state: State<AppState> = app.state();
+    if state.edge_enabled.load(Ordering::Relaxed) && state.edge_dock.lock().unwrap().is_docked() {
+        slide_window(&app, true);
+        return;
+    }
     if let Some(w) = main_window(&app) {
         let _ = w.hide();
     }
@@ -348,9 +811,29 @@ fn hide_window(app: AppHandle) {
 #[tauri::command]
 fn set_tray_mode(app: AppHandle, mode: String) {
     let state: State<AppState> = app.state();
-    *state.tray_mode.lock().unwrap() = if mode == "percent" { mode } else { "icon".into() };
+    *state.tray_mode.lock().unwrap() = if mode == "percent" {
+        mode
+    } else {
+        "icon".into()
+    };
     let status = state.cache.lock().unwrap().clone();
     update_tray(&app, &status);
+}
+
+/// The shortcut currently held (`""` when it is switched off), so Settings can
+/// draw the right option after a restart.
+#[tauri::command]
+fn get_global_shortcut(state: State<AppState>) -> String {
+    state.shortcut.lock().unwrap().clone().unwrap_or_default()
+}
+
+/// Switch the global shortcut. `keys` is an accelerator as the plugin spells
+/// it (`CommandOrControl+Shift+U`); `""` turns it off. Returns the shortcut now
+/// held, or why it could not be held (another app has it).
+#[tauri::command]
+fn set_global_shortcut(app: AppHandle, keys: String) -> Result<String, String> {
+    apply_shortcut(&app, &keys)?;
+    Ok(get_global_shortcut(app.state::<AppState>()))
 }
 
 #[tauri::command]
@@ -361,7 +844,11 @@ fn get_autostart(app: AppHandle) -> bool {
 #[tauri::command]
 fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String> {
     let launcher = app.autolaunch();
-    let res = if enabled { launcher.enable() } else { launcher.disable() };
+    let res = if enabled {
+        launcher.enable()
+    } else {
+        launcher.disable()
+    };
     res.map_err(|e| e.to_string())?;
     Ok(launcher.is_enabled().unwrap_or(enabled))
 }
@@ -430,10 +917,20 @@ fn main() {
         return;
     }
 
-    let state = AppState { tray_mode: Mutex::new("icon".into()), ..Default::default() };
+    let state = AppState {
+        tray_mode: Mutex::new("icon".into()),
+        notify_enabled: AtomicBool::new(true),
+        notify_lang: Mutex::new("en".into()),
+        ..Default::default()
+    };
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            None,
+        ))
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(state)
         .setup(|app| {
             #[cfg(target_os = "macos")]
@@ -449,7 +946,12 @@ fn main() {
                 .build()?;
 
             let icon = Image::new_owned(
-                tray_icon::render([None; 3], cfg!(target_os = "macos")),
+                tray_icon::render(
+                    [None; tray_icon::SLOTS],
+                    [None; tray_icon::SLOTS],
+                    cfg!(target_os = "macos"),
+                    &tray_icon::CustomColors::new(),
+                ),
                 tray_icon::SIZE,
                 tray_icon::SIZE,
             );
@@ -464,6 +966,12 @@ fn main() {
                     "refresh" => {
                         let app = app.clone();
                         std::thread::spawn(move || {
+                            // Online accounts are polled here too, exactly like
+                            // the in-app refresh: a tray-menu refresh shouldn't
+                            // leave a web-signed-in service behind.
+                            if !mock_mode() {
+                                web::poll_due(&app, true);
+                            }
                             refresh_and_broadcast(&app, true);
                         });
                     }
@@ -503,22 +1011,84 @@ fn main() {
                     let _ = window.set_shadow(false);
                 }
                 let handle = app.handle().clone();
-                window.on_window_event(move |event| {
-                    if let WindowEvent::Focused(false) = event {
-                        if let Some(w) = main_window(&handle) {
-                            if w.is_visible().unwrap_or(false) && !cfg!(debug_assertions) {
+                window.on_window_event(move |event| match event {
+                    // A user drag bumps the sequence; the watcher below turns
+                    // "nothing moved for 180 ms" into a settled drag. Moves we
+                    // caused ourselves are recognised and ignored.
+                    WindowEvent::Moved(pos) => {
+                        let state: State<AppState> = handle.state();
+                        let (x, y) = (pos.x as f64, pos.y as f64);
+                        if let Some((ex, ey)) = *state.expected_pos.lock().unwrap() {
+                            if (x - ex).abs() <= 1.0 && (y - ey).abs() <= 1.0 {
+                                *state.expected_pos.lock().unwrap() = None;
+                                return;
+                            }
+                        }
+                        if state.edge_anim.load(Ordering::Relaxed) {
+                            return;
+                        }
+                        state.move_seq.fetch_add(1, Ordering::Relaxed);
+                    }
+                    WindowEvent::Focused(false) => {
+                        if !cfg!(debug_assertions) {
+                            let Some(w) = main_window(&handle) else {
+                                return;
+                            };
+                            if !w.is_visible().unwrap_or(false) {
+                                return;
+                            }
+                            let state: State<AppState> = handle.state();
+                            // Tucked against an edge: slide away instead of
+                            // disappearing, leaving the grab handle.
+                            let tucks = state.edge_enabled.load(Ordering::Relaxed)
+                                && state.edge_dock.lock().unwrap().is_docked();
+                            if tucks {
+                                slide_window(&handle, true);
+                            } else {
                                 let _ = w.hide();
-                                handle
-                                    .state::<AppState>()
-                                    .blur_hidden_at
-                                    .store(now_ms(), Ordering::Relaxed);
+                                state.blur_hidden_at.store(now_ms(), Ordering::Relaxed);
                             }
                         }
                     }
+                    _ => {}
                 });
             }
 
             *app.state::<AppState>().web_logins.lock().unwrap() = web::load_logins(app.handle());
+
+            // The global shortcut is held from the first moment, before the UI
+            // has had time to send its saved choice; a combination another app
+            // owns is reported in the log and simply leaves it off.
+            if let Err(e) = apply_shortcut(app.handle(), DEFAULT_SHORTCUT) {
+                eprintln!("global shortcut {DEFAULT_SHORTCUT} not registered: {e}");
+            }
+
+            // Edge watcher: one quiet thread for the life of the app. It looks
+            // for a drag that has stopped moving and hands it to
+            // `settle_window`, which snaps or releases the edge.
+            let watcher = app.handle().clone();
+            std::thread::spawn(move || {
+                let mut last = 0i64;
+                let mut changed = std::time::Instant::now();
+                loop {
+                    std::thread::sleep(Duration::from_millis(80));
+                    let state: State<AppState> = watcher.state();
+                    let seq = state.move_seq.load(Ordering::Relaxed);
+                    if seq == state.move_settled.load(Ordering::Relaxed) {
+                        last = seq;
+                        continue;
+                    }
+                    if seq != last {
+                        last = seq;
+                        changed = std::time::Instant::now();
+                        continue;
+                    }
+                    if changed.elapsed() >= Duration::from_millis(180) {
+                        settle_window(&watcher);
+                        state.move_settled.store(seq, Ordering::Relaxed);
+                    }
+                }
+            });
 
             // Background poller: first fetch right away, then every TICK.
             // Per-provider intervals in `fetch_due` keep the real request
@@ -536,9 +1106,17 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_status,
             refresh_status,
+            set_notify_enabled,
+            set_lang,
             set_height,
             hide_window,
             set_tray_mode,
+            get_global_shortcut,
+            set_global_shortcut,
+            set_custom_colors,
+            set_edge_enabled,
+            edge_state,
+            expand_docked,
             get_autostart,
             set_autostart,
             app_info,
@@ -553,7 +1131,9 @@ fn main() {
 }
 
 fn store_anchor(app: &AppHandle, rect: &Rect) {
-    let scale = main_window(app).and_then(|w| w.scale_factor().ok()).unwrap_or(1.0);
+    let scale = main_window(app)
+        .and_then(|w| w.scale_factor().ok())
+        .unwrap_or(1.0);
     let pos = rect.position.to_physical::<f64>(scale);
     let size = rect.size.to_physical::<f64>(scale);
     *app.state::<AppState>().anchor.lock().unwrap() = Some((pos.x, pos.y, size.width, size.height));

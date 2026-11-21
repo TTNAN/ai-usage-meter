@@ -4,6 +4,7 @@
 
 # ---> Tauri
 src-tauri/target/
+src-tauri/crates/*/target/
 
 # ---> OS
 .DS_Store
