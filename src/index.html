@@ -114,15 +114,16 @@
               <span data-i18n="launchAtLogin">Launch at login</span>
               <input type="checkbox" class="switch" id="autostart" />
             </label>
-            <div class="setting">
+            <div class="setting" id="setting-shortcut">
               <span data-i18n="shortcut">Shortcut</span>
               <span class="sc-side">
                 <span class="seg" data-setting="shortcut">
                   <button type="button" data-value="CommandOrControl+Shift+U">⌘⇧U</button>
                   <button type="button" data-value="CommandOrControl+Shift+A">⌘⇧A</button>
+                  <button type="button" id="sc-custom" data-custom>Custom</button>
                   <button type="button" data-value="">Off</button>
                 </span>
-                <small class="sc-note" id="shortcut-note" hidden></small>
+                <small class="sc-note" id="shortcut-note" role="status" aria-live="polite" hidden></small>
               </span>
             </div>
             <label class="setting">

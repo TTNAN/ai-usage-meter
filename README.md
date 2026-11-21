@@ -37,7 +37,7 @@
 - **每个窗口都看得到** — Claude 的 5 小时 / 本周（以及 Opus、Sonnet 单独额度）、ChatGPT 里 Codex 的 5 小时 / 本周、Grok 的计费周期、Gemini 的 Pro / Flash 额度、Copilot 的高级请求和对话额度，各自带倒计时。
 - **额度在往哪走也看得见** — 每行记一小段本机历史，用一条 36×12 的迷你折线画出走势；按最近的速度估算「约多久用完」，只在真的会在重置前来得及用完时才写出来，安静的额度不多占一行。
 - **快用完时会提前说话** — 哪家额度只剩 15% 时发一条系统通知，跌破 5% 再提醒一次；同一个窗口、同一档只提醒一次，重置后重新开始，设置里的「低额度提醒」可以关掉。通知跟着界面语言走（中文或英文）。
-- **全局快捷键** — 默认 `⌘⇧U` / `Ctrl+Shift+U`，在任何应用里都能唤出或收起弹窗；设置里可换成 `⌘⇧A` 或关掉，被别的应用占用时会如实说明。
+- **全局快捷键** — 默认 `⌘⇧U` / `Ctrl+Shift+U`，在任何应用里都能唤出或收起弹窗；设置里可换成 `⌘⇧A`、录制自己的组合键（点“自定义”后直接按，`Esc` 取消），或关掉；被别的应用占用时会如实说明。
 - **订阅档位** — 自动识别 Max、Pro、Plus、SuperGrok、Ultra、Individual 等档位。
 - **零配置** — 直接复用 ChatGPT 桌面版（Codex）、Claude Code、Grok Build、Gemini CLI / Antigravity、GitHub CLI / Copilot CLI 已有的登录；只用 Claude / Grok 网页版或 App？在设置里登录一次账号就行。Gemini 的访问令牌一小时就过期，应用会拿 refresh token 自己续上并写回 `~/.gemini/oauth_creds.json`，不用再跑一次 `gemini`。
 - **实时跟着变** — 后台每 1 到 5 分钟自动重读，你在网页、App、命令行哪里用掉的额度都会同步显示。
@@ -87,7 +87,7 @@ xattr -cr "/Applications/AI Usage Meter.app"
 
 | 按键 | 作用 |
 | --- | --- |
-| `⌘⇧U` / `Ctrl+Shift+U` | 全局快捷键：在任何应用里唤出或收起弹窗（设置里可换 `⌘⇧A` 或关掉；Wayland 会话不支持全局快捷键，会说明并保持关闭） |
+| `⌘⇧U` / `Ctrl+Shift+U` | 全局快捷键：在任何应用里唤出或收起弹窗（设置里可换 `⌘⇧A`、录制任意组合键（`⌘⌥K`、`F1` 都行）或关掉；Wayland 会话不支持全局快捷键，会说明并保持关闭） |
 | `⌘R` / `Ctrl R` | 刷新 |
 | `⌘,` | 打开设置 |
 | `Esc` | 收起弹窗（贴边时收回屏幕边缘） |
@@ -177,7 +177,7 @@ cd src-tauri && cargo test                        # 应用层（需要 Tauri 的
 - [x] 额度即将用尽时的系统通知
 - [x] 更多服务：Gemini CLI / Antigravity、GitHub Copilot
 - [x] 用量走势迷你折线与「预计多久用完」
-- [x] 全局快捷键（`⌘⇧U` / `Ctrl+Shift+U`）
+- [x] 全局快捷键（`⌘⇧U` / `Ctrl+Shift+U`，或自己录制）
 - [x] 把 Dock 版并进同一个应用：环图 / Dock 双形态（0.7.0）
 - [x] Linux 托盘：`.deb` 与 `.AppImage`
 - [ ] 更多服务：Cursor、Windsurf
