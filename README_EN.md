@@ -11,7 +11,7 @@ One app, two shapes: the **rings popover** for the full picture, the **dock pane
 [中文](./README.md) · English
 
 [![Build](https://github.com/TTNAN/ai-usage-meter/actions/workflows/build.yml/badge.svg)](https://github.com/TTNAN/ai-usage-meter/actions/workflows/build.yml)
-[![Release](https://img.shields.io/github/v/release/TTNAN/ai-usage-meter?include_prereleases&color=6e9bff)](https://github.com/TTNAN/ai-usage-meter/releases)
+[![Release](https://img.shields.io/github/v/release/TTNAN/ai-usage-meter?include_prereleases&color=6e9bff)](https://github.com/TTNAN/ai-usage-meter/releases/latest)
 ![Platforms](https://img.shields.io/badge/macOS%20%7C%20Windows-111?logo=tauri&logoColor=white)
 [![License](https://img.shields.io/badge/license-MIT-b38cff)](./LICENSE)
 
@@ -31,11 +31,12 @@ Tired of hitting "usage limit reached" mid-task? AI Usage Meter puts every 5-hou
 
 ## Highlights
 
-- **Two shapes, one app** — two pill switches sit side by side above the dock, **Used / Left** and **Rings / Dock**, and either view is one click away. The rings popover spreads every window out; the dock panel is the original dock design — five brand-coloured squircles (ChatGPT white, Claude terracotta, Grok obsidian, Gemini pale, Copilot deep slate) rising a little out of one dark tray, one per service: the official mark, `37 % used`, a hairline bar and `3h 08m to reset`, with a 30×8 trend line and its `~2h52m` ETA under each tile. The names sit under the tray, then a row of `• ChatGPT · Connected` chips and four quiet buttons — `Colors / Edge / Refresh / Quit`; Colors opens the service-colour drawer right there and the window grows to fit it. 788 px wide with five services, narrowing as services drop out (496 px for three), with the same settings and colours on both views.
+- **Two shapes, one app** — two pill switches sit side by side above the dock, **Used / Left** and **Rings / Dock**, and either view is one click away. The rings popover spreads every window out; the dock panel is the original dock design — five brand-coloured squircles (ChatGPT white, Claude terracotta, Grok obsidian, Gemini pale, Copilot deep slate) rising a little out of one dark tray, one per service: the official mark, `37 % used`, a hairline bar and `3h 08m to reset`, with a 30×8 trend line and its `~2h52m` ETA under each tile. The names sit under the tray, then a row of `• ChatGPT · Connected` chips and four quiet buttons — `Colors / Edge / Refresh / Quit`; Colors opens the service-colour drawer right there and the window grows to fit it. 788 px wide with five services, narrowing as services drop out ([496 px with three](docs/dock-fewer.png)), with the same settings and colours on both views.
 - **See the tightest limit first** — concentric rings and one big number tell you which quota runs out first and when it resets. Connect three services and you get the classic three rings; connect four or five and the gauge adds rings and thins the stroke, so no service is left out.
 - **The icon is the gauge** — three tiny battery bars show the three tightest services (three is what actually reads at 16 px); on macOS you can show the percentage right next to it.
 - **Every window, not just one** — Claude 5-hour / weekly (plus separate Opus and Sonnet limits), Codex 5-hour / weekly in ChatGPT, Grok's billing period, Gemini's Pro / Flash allowances, Copilot's premium requests and chat, each with its own countdown.
 - **See where a number is going** — every row keeps a short local history and draws it as a 36×12 sparkline; at the recent rate it estimates "~1h 42m left", but only when that actually lands before the reset. A quiet service adds nothing.
+- **Warned before the wall** — a native notification when a service drops to 15 % left, and one more when it goes under 5 %; each step is announced once per reset window, and "Low-quota alerts" in Settings turns the whole thing off. The alert speaks the interface language (English / 中文).
 - **One global shortcut** — `⌘⇧U` / `Ctrl+Shift+U` brings the popover up, or puts it away, from any app. Settings can switch it to `⌘⇧A` or off, and says so plainly when another app already owns the combination.
 - **Plan aware** — picks up Max, Pro, Plus, SuperGrok, Ultra, Individual and friends.
 - **Zero setup** — reuses the logins of the ChatGPT desktop app (Codex), Claude Code, Grok Build, Gemini CLI / Antigravity and the GitHub CLI / Copilot CLI. Only use Claude or Grok on the web or in their apps? Sign in once in Settings. Gemini's access token expires after an hour: the app renews it with the refresh token and writes it back to `~/.gemini/oauth_creds.json`, so you never have to run `gemini` again.
@@ -51,7 +52,7 @@ Tired of hitting "usage limit reached" mid-task? AI Usage Meter puts every 5-hou
 
 ## Install
 
-Grab the latest build from [Releases](https://github.com/TTNAN/ai-usage-meter/releases):
+Grab the latest from [Releases](https://github.com/TTNAN/ai-usage-meter/releases/latest) — [v0.7.0](https://github.com/TTNAN/ai-usage-meter/releases/tag/v0.7.0) today, with the macOS `.dmg` and the Windows `.exe` and `.msi`:
 
 | Platform | File | Notes |
 | --- | --- | --- |
@@ -132,7 +133,7 @@ python3 -m http.server -d src 8000
 # http://localhost:8000/?view=dock           the dock view, five tiles
 # http://localhost:8000/?view=dock&colors=1  the dock view with the colours drawer open
 # http://localhost:8000/?view=dock&state=three&hide=1   a three-service dock
-# http://localhost:8000/?state=trend         same, to look at the sparklines and ETAs
+# http://localhost:8000/?state=trend         the rings view, to look at the sparklines and ETAs
 # http://localhost:8000/?state=empty          first run
 # http://localhost:8000/?state=mixed          mixed (not connected / expired)
 # http://localhost:8000/?state=four           four connected (four rings)

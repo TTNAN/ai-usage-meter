@@ -11,7 +11,7 @@
 中文 · [English](./README_EN.md)
 
 [![Build](https://github.com/TTNAN/ai-usage-meter/actions/workflows/build.yml/badge.svg)](https://github.com/TTNAN/ai-usage-meter/actions/workflows/build.yml)
-[![Release](https://img.shields.io/github/v/release/TTNAN/ai-usage-meter?include_prereleases&color=6e9bff)](https://github.com/TTNAN/ai-usage-meter/releases)
+[![Release](https://img.shields.io/github/v/release/TTNAN/ai-usage-meter?include_prereleases&color=6e9bff)](https://github.com/TTNAN/ai-usage-meter/releases/latest)
 ![Platforms](https://img.shields.io/badge/macOS%20%7C%20Windows-111?logo=tauri&logoColor=white)
 [![License](https://img.shields.io/badge/license-MIT-b38cff)](./LICENSE)
 
@@ -31,11 +31,12 @@
 
 ## 亮点
 
-- **两种形态，一个应用** — Dock 视图顶上并排两个胶囊开关：「已用 / 剩余」和「环图 / Dock」，随时换。环图弹窗把每个窗口、每条倒计时摊开；Dock 面板是原版 Dock 的样子——五块品牌色圆角格（ChatGPT 白、Claude 陶土、Grok 墨黑、Gemini 浅白、Copilot 深墨绿）从深色托盘里微微探出上沿，一格一个服务：官方图标、`37 % 已用`、一条 3.5px 细进度条、`3h 08m 后重置`，格子下面还有一小条走势折线与「约 2h52m 用完」。托盘下面一排是服务名，再往下是 `• ChatGPT · 已连接` 状态胶囊和「配色 / 贴边 / 刷新 / 退出」四个安静按钮——点「配色」当场展开服务配色抽屉，窗口自己长高。五个服务时 788px 宽，少几个就跟着收窄（三家 496px），两个视图共用同一套设置和配色。
+- **两种形态，一个应用** — Dock 视图顶上并排两个胶囊开关：「已用 / 剩余」和「环图 / Dock」，随时换。环图弹窗把每个窗口、每条倒计时摊开；Dock 面板是原版 Dock 的样子——五块品牌色圆角格（ChatGPT 白、Claude 陶土、Grok 墨黑、Gemini 浅白、Copilot 深墨绿）从深色托盘里微微探出上沿，一格一个服务：官方图标、`37 % 已用`、一条 3.5px 细进度条、`3h 08m 后重置`，格子下面还有一小条走势折线与 `~2h52m` 这样的预计用完时间。托盘下面一排是服务名，再往下是 `• ChatGPT · 已连接` 状态胶囊和「配色 / 贴边 / 刷新 / 退出」四个安静按钮——点「配色」当场展开服务配色抽屉，窗口自己长高。五个服务时 788px 宽，少几个就跟着收窄（[三家时 496px](docs/dock-fewer.png)），两个视图共用同一套设置和配色。
 - **一眼看清最紧张的那一个** — 同心环总览 + 大号数字，直接告诉你哪家额度最先见底、多久后重置。连上几家就画几环：3 家是经典三环，4–5 家会自动加密环数、收细描边，一家都不落下。
 - **菜单栏图标本身就是仪表** — 三根小电量条实时显示额度最紧的三个服务（16px 的图标放三根最清楚）；macOS 上还可以在图标旁直接显示百分比。
 - **每个窗口都看得到** — Claude 的 5 小时 / 本周（以及 Opus、Sonnet 单独额度）、ChatGPT 里 Codex 的 5 小时 / 本周、Grok 的计费周期、Gemini 的 Pro / Flash 额度、Copilot 的高级请求和对话额度，各自带倒计时。
 - **额度在往哪走也看得见** — 每行记一小段本机历史，用一条 36×12 的迷你折线画出走势；按最近的速度估算「约多久用完」，只在真的会在重置前来得及用完时才写出来，安静的额度不多占一行。
+- **快用完时会提前说话** — 哪家额度只剩 15% 时发一条系统通知，跌破 5% 再提醒一次；同一个窗口、同一档只提醒一次，重置后重新开始，设置里的「低额度提醒」可以关掉。通知跟着界面语言走（中文／English）。
 - **全局快捷键** — 默认 `⌘⇧U` / `Ctrl+Shift+U`，在任何应用里都能唤出或收起弹窗；设置里可换成 `⌘⇧A` 或关掉，被别的应用占用时会如实说明。
 - **订阅档位** — 自动识别 Max、Pro、Plus、SuperGrok、Ultra、Individual 等档位。
 - **零配置** — 直接复用 ChatGPT 桌面版（Codex）、Claude Code、Grok Build、Gemini CLI / Antigravity、GitHub CLI / Copilot CLI 已有的登录；只用 Claude / Grok 网页版或 App？在设置里登录一次账号就行。Gemini 的访问令牌一小时就过期，应用会拿 refresh token 自己续上并写回 `~/.gemini/oauth_creds.json`，不用再跑一次 `gemini`。
@@ -51,7 +52,7 @@
 
 ## 安装
 
-从 [Releases](https://github.com/TTNAN/ai-usage-meter/releases) 下载：
+从 [Releases](https://github.com/TTNAN/ai-usage-meter/releases/latest) 下载最新版 —— 当前 [v0.7.0](https://github.com/TTNAN/ai-usage-meter/releases/tag/v0.7.0)，macOS `.dmg`、Windows `.exe` 与 `.msi` 都在里面：
 
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
@@ -132,7 +133,7 @@ python3 -m http.server -d src 8000
 # http://localhost:8000/?view=dock        Dock 视图（五个格子）
 # http://localhost:8000/?view=dock&colors=1  Dock 视图并展开「服务配色」抽屉
 # http://localhost:8000/?view=dock&state=three&hide=1   三家服务的 Dock
-# http://localhost:8000/?state=trend      同上，重点看迷你走势与「约多久用完」
+# http://localhost:8000/?state=trend      环图视图，重点看迷你走势与预计用完
 # http://localhost:8000/?state=empty       首次启动
 # http://localhost:8000/?state=mixed       混合状态（未连接 / 登录过期）
 # http://localhost:8000/?state=four        只连四家（四环总览）
