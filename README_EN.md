@@ -6,7 +6,7 @@
 
 **Your Claude, ChatGPT (Codex), Grok, Gemini and GitHub Copilot limits — live in the menu bar.**
 
-One app, two shapes: the **rings popover** for the full picture, the **compact dock bar** when you only want a corner of the screen — switch anytime, with the same settings and colours on both.
+One app, two shapes: the **rings popover** for the full picture, the **dock panel** that puts all five services and their reset times in one place — switch anytime, with the same settings and colours on both.
 
 [中文](./README.md) · English
 
@@ -22,7 +22,7 @@ One app, two shapes: the **rings popover** for the full picture, the **compact d
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/dock-light.png" />
-  <img src="docs/dock.png" alt="The compact dock bar: one tile per service" width="520" />
+  <img src="docs/dock.png" alt="The dock view: five brand squircles, the names, status chips and the colours drawer" width="880" />
 </picture>
 
 </div>
@@ -31,7 +31,7 @@ Tired of hitting "usage limit reached" mid-task? AI Usage Meter puts every 5-hou
 
 ## Highlights
 
-- **Two shapes, one app** — a switch in the footer moves between **Rings** and **Dock** whenever you like. The dock bar is a row of brand-coloured squircles rising out of a slim translucent tray — ChatGPT white, Claude terracotta, Grok obsidian, Gemini pale, Copilot deep slate — one per service: the official mark, one restrained line (`63% left`), and a 3 px bar, with the name on the tray below. Reset times and the ETA appear on hover. It is 558×160 with five services and narrows as services drop out (350 px for three), and both views share the same settings and colours.
+- **Two shapes, one app** — two pill switches sit side by side above the dock, **Used / Left** and **Rings / Dock**, and either view is one click away. The rings popover spreads every window out; the dock panel is the original dock design — five brand-coloured squircles (ChatGPT white, Claude terracotta, Grok obsidian, Gemini pale, Copilot deep slate) rising a little out of one dark tray, one per service: the official mark, `37 % used`, a hairline bar and `3h 08m to reset`, with a 30×8 trend line and its `~2h52m` ETA under each tile. The names sit under the tray, then a row of `• ChatGPT · Connected` chips and four quiet buttons — `Colors / Edge / Refresh / Quit`; Colors opens the service-colour drawer right there and the window grows to fit it. 788 px wide with five services, narrowing as services drop out (496 px for three), with the same settings and colours on both views.
 - **See the tightest limit first** — concentric rings and one big number tell you which quota runs out first and when it resets. Connect three services and you get the classic three rings; connect four or five and the gauge adds rings and thins the stroke, so no service is left out.
 - **The icon is the gauge** — three tiny battery bars show the three tightest services (three is what actually reads at 16 px); on macOS you can show the percentage right next to it.
 - **Every window, not just one** — Claude 5-hour / weekly (plus separate Opus and Sonnet limits), Codex 5-hour / weekly in ChatGPT, Grok's billing period, Gemini's Pro / Flash allowances, Copilot's premium requests and chat, each with its own countdown.
@@ -42,7 +42,7 @@ Tired of hitting "usage limit reached" mid-task? AI Usage Meter puts every 5-hou
 - **Live** — re-reads every 1 to 5 minutes in the background, so usage from the web, the apps or the CLI shows up as it happens.
 - **Feels native** — real macOS popover material, follows light and dark mode, opens from the icon and tucks away when you click elsewhere; a tray flyout on Windows.
 - **Drops where you drop it, and docks to the edge** — drag it anywhere by the header or any empty spot; drop it against the left or right screen edge and it snaps there, slides off-screen when it loses focus leaving a 12 px grab handle, and slides back when you click that handle (or the menu-bar icon). "Tuck at screen edge" in Settings turns it off.
-- **Your colours** — Settings → Colors has one row per service: click the swatch for the system colour picker, or one of the presets, and the concentric rings, progress bars and accents follow at once; the Windows tray bars use the same colours. ↺ or "Reset all" restores each service's own accent.
+- **Your colours** — Settings → Colors has one row per service: click the swatch for the system colour picker, or one of the presets, and the concentric rings, progress bars and accents follow at once; the Windows tray bars use the same colours. ↺ or "Reset all" restores each service's own accent. The dock's own Colors button opens the same set, right under the tray ([what it looks like](docs/dock-colors.png)).
 - **English and 中文** — follows your system language, switchable in Settings.
 - **Calm and honest** — gentle background polling, rate-limited manual refresh; one failed request keeps the last reading (clearly marked) and it never makes numbers up.
 - **Tiny** — Tauri v2 and plain HTML/CSS/JS. No Node, no bundler.
@@ -129,8 +129,9 @@ You can work on the UI without Rust: serve `src/` with any static server and it 
 ```bash
 python3 -m http.server -d src 8000
 # http://localhost:8000/                     demo data (with trends and ETAs)
-# http://localhost:8000/?view=dock           the compact dock bar, five tiles
-# http://localhost:8000/?view=dock&state=three&hide=1   a three-service dock bar
+# http://localhost:8000/?view=dock           the dock view, five tiles
+# http://localhost:8000/?view=dock&colors=1  the dock view with the colours drawer open
+# http://localhost:8000/?view=dock&state=three&hide=1   a three-service dock
 # http://localhost:8000/?state=trend         same, to look at the sparklines and ETAs
 # http://localhost:8000/?state=empty          first run
 # http://localhost:8000/?state=mixed          mixed (not connected / expired)

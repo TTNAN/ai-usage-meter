@@ -71,6 +71,17 @@ const STRINGS = {
     viewRings: "Rings",
     viewDock: "Dock",
     dockEdge: "Tuck at screen edge",
+    dockEdgeBtn: "Edge",
+    dockColors: "Colors",
+    dockRefresh: "Refresh",
+    dockQuit: "Quit",
+    dockConnected: "Connected",
+    dockSignIn: "Sign in here",
+    howToConnect: "How to connect",
+    dockColorsNote: "Pick a swatch — the rings, the bars and the numbers follow",
+    dockShortcutNote: "Global shortcut: open or tuck the Dock from anywhere",
+    dockShortcutOn: "On — press it anywhere to open or tuck the Dock; click to turn off",
+    dockShortcutOff: "Off — click to turn it on",
     dockReset: (d) => `resets in ${d}`,
     notConnectedShort: "Not connected",
     expiredShort: "Expired",
@@ -168,6 +179,17 @@ const STRINGS = {
     viewRings: "环图",
     viewDock: "Dock",
     dockEdge: "贴边自动收起",
+    dockEdgeBtn: "贴边",
+    dockColors: "配色",
+    dockRefresh: "刷新",
+    dockQuit: "退出",
+    dockConnected: "已连接",
+    dockSignIn: "点此登录",
+    howToConnect: "如何连接",
+    dockColorsNote: "点色块自选，环、进度条和数字会立刻跟着变",
+    dockShortcutNote: "全局快捷键：在任何地方按一下，就能打开或收起 Dock",
+    dockShortcutOn: "已开启：在任何地方按一下就能打开或收起 Dock，点击关闭",
+    dockShortcutOff: "已关闭：点击开启",
     dockReset: (d) => `${d} 后重置`,
     notConnectedShort: "未连接",
     expiredShort: "已过期",
@@ -272,7 +294,7 @@ function normalizeShortcut(v) {
 }
 
 const settings = {
-  // Which shape the window takes: the rings popover, or the compact dock bar.
+  // Which shape the window takes: the rings popover, or the dock panel.
   // Switched from the footer of either view and remembered across launches.
   view: localStorage.getItem("view") || "concentric",
   mode: localStorage.getItem("mode") || "left",
@@ -379,6 +401,8 @@ function applyColors() {
     else root.style.removeProperty(ACCENT_VAR[id]);
   }
   syncColorRows();
+  syncDockColors();
+  syncDockColorbar();
   syncTrayColors();
 }
 
@@ -810,10 +834,43 @@ function visibleRows() {
 }
 
 // --------------------------------------------------------------- dock
-// The compact view: one 88 px tile per service. Everything the rings view
-// spells out in a row — the binding window, when it resets, where it is going
-// — stays one hover away (the tooltip and the strip under the bar), so the
-// tiles themselves are only the icon, the number and its one-word label.
+// The Dock view is the original ai-usage-meter-dock design, ported whole —
+// the same tray, the same squircles and the same four controls. The order is
+// the original's too: ChatGPT, Claude, Grok, Gemini, Copilot.
+
+const DOCK_ORDER = ["codex", "claude", "grok", "gemini", "copilot"];
+const DOCK_TILE = {
+  codex: "tile-chatgpt",
+  claude: "tile-claude",
+  grok: "tile-grok",
+  gemini: "tile-gemini",
+  copilot: "tile-copilot",
+};
+// What a squircle's number, bar and countdown fall back to: one accent per
+// brand surface, exactly as the original dock painted them.
+const DOCK_ACCENT = {
+  codex: "#2f6fed",
+  claude: "#ffffff",
+  grok: "#a78bfa",
+  gemini: "#38bdf8",
+  copilot: "#34d399",
+};
+const DOCK_PRESETS = ["#2f6fed", "#e08a6b", "#f5b04c", "#b38cff", "#34d399"];
+// A cell, the gap between cells and the frame around them (the tray's 24 px
+// on each side plus the panel's 12): the width the page asks Rust for, so the
+// bar narrows with the number of services and nothing is ever clipped.
+const CELL_W = 132;
+const CELL_GAP = 14;
+const FRAME_W = 72;
+const MIN_W = 300;
+
+function dockRows() {
+  if (!status.length)
+    return DOCK_ORDER.map((id) => ({ id, label: LABEL[id], state: "loading", windows: [] }));
+  return visibleRows()
+    .slice()
+    .sort((a, b) => DOCK_ORDER.indexOf(a.id) - DOCK_ORDER.indexOf(b.id));
+}
 
 function dockLabel(s) {
   if (!hasNumbers(s)) {
@@ -823,102 +880,195 @@ function dockLabel(s) {
   return t(settings.mode === "used" ? "used" : "left");
 }
 
-/** The tile's tooltip: name and plan, the binding window, the reset, the ETA. */
-function dockTitle(s) {
-  const head = s.plan ? `${s.label} · ${s.plan}` : s.label;
-  if (!hasNumbers(s)) {
-    if (s.state === "loading") return `${head}\n${t("loading")}`;
-    const why =
-      s.state === "expired" ? t("expiredShort")
-      : s.state === "unavailable" ? t("unavailable")(s.label)
-      : t("notConnected")(s.id);
-    return `${head}\n${why}`;
-  }
-  const w = headline(s);
-  const lines = [
-    head,
-    `${dockLabel(s)} ${shown(peakUsed(s)).toFixed(0)}% · ${t("win")[w.kind] || w.kind}`,
-    resetSentence(w.resetsAt),
-  ];
-  const eta = etaSeconds(s);
-  if (eta != null) lines.push(etaText(eta));
-  return lines.filter(Boolean).join("\n");
+/** `~2h52m` — what fits in 8.5 px under a squircle. */
+function etaShort(secs) {
+  const total = Math.max(1, Math.round(secs / 60));
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return h ? `~${h}h${String(m).padStart(2, "0")}m` : `~${m}m`;
 }
 
-function dockTile(s) {
+/** The mark: a masked glyph, or Gemini's own four-colour spark. */
+function dockMark(id) {
+  return id === "gemini" ? `<img src="icons/gemini.svg" alt="">` : "<i></i>";
+}
+
+/** Under the squircle, on the tray: the trend line and the ETA, or nothing. */
+function dockTrend(s) {
+  const spark = sparkline(s.id, 30, 8);
+  const eta = etaSeconds(s);
+  if (!spark && eta == null) return "";
+  const text = eta == null ? "" : `<span class="eta">${etaShort(eta)}</span>`;
+  return `${spark}${text}`;
+}
+
+function dockTrendTitle(s) {
+  const eta = etaSeconds(s);
+  if (eta == null) return t("trendTitle");
+  const total = Math.max(1, Math.round(eta / 60));
+  return t("etaTitle")(t("etaDur")(Math.floor(total / 60), total % 60));
+}
+
+function dockCell(s) {
   const live = hasNumbers(s);
-  const left = live ? 100 - peakUsed(s) : null;
-  const cls = ["dtile"];
-  if (!live) cls.push("off");
-  if (left != null && left <= 2) cls.push("out");
-  // A colour picked in Settings tints this tile's number and bar, through the
-  // contrast-safe ink; the surface and the mark stay the brand's own.
-  const pick = serviceColors[s.id];
-  const ink = pick ? inkFor(pick, TILE_BG[s.id]) : null;
-  if (ink) cls.push("custom");
-  const value = live ? Math.max(0, Math.min(100, Math.round(shown(peakUsed(s))))) : null;
-  const aria = live ? `${s.label} ${value}% ${dockLabel(s)}` : `${s.label} ${dockLabel(s)}`;
+  const w = live ? headline(s) : null;
+  const value = live ? Math.max(0, Math.min(100, Math.round(shown(peakUsed(s))))) : 0;
+  const tag = `<span class="tag-mode">${esc(dockLabel(s))}</span>`;
   const inner = live
-    ? `<span class="dicon">${tileGlyph(s.id)}</span>
-       <span class="dpct"><b>${value}</b><em>%</em><span class="dword">${esc(dockLabel(s))}</span></span>
-       <span class="dbar"><i style="width:${value}%"></i></span>`
-    : `<span class="dicon">${tileGlyph(s.id)}</span>
-       <span class="doff">${esc(dockLabel(s))}</span>`;
-  return `<button class="${cls.join(" ")}" type="button" data-id="${s.id}"
-      style="--accent: ${accent(s.id)}${ink ? `; --ink: ${ink}` : ""}" title="${esc(dockTitle(s))}" aria-label="${esc(aria)}">
-    <span class="dtsq">${inner}</span>
-    <span class="dcap">${esc(s.label)}</span>
-  </button>`;
+    ? `<div class="mark">${dockMark(s.id)}</div>
+       <div class="pct-line"><span class="num">${value}</span><span class="pct-sign">%</span>${tag}</div>
+       <div class="bar"><i style="width:${value}%"></i></div>
+       <div class="reset${dockReset(w.resetsAt).length > 12 ? " long" : ""}" data-reset="${
+         w.resetsAt ?? ""
+       }" data-reset-fmt="timer">${esc(dockReset(w.resetsAt))}</div>`
+    : `<div class="mark">${dockMark(s.id)}</div>
+       <div class="pct-line"><span class="num">--</span>${tag}</div>
+       <div class="bar"><i style="width:0%"></i></div>
+       <div class="reset">${esc(
+         // Before the first reading there is nothing to do yet: say nothing.
+         s.state === "loading" ? "" : WEB_IDS.includes(s.id) ? t("dockSignIn") : t("howToConnect")
+       )}</div>`;
+  const trend = live ? dockTrend(s) : "";
+  // A quiet squircle is a button in all but name: give it the keyboard too.
+  const a11y = live ? "" : ` role="button" tabindex="0" aria-label="${esc(s.label)} · ${esc(dockLabel(s))}"`;
+  return `<div class="cell${live ? "" : " off"}" data-id="${s.id}">
+    <div class="tile ${DOCK_TILE[s.id]}${live ? "" : " off"}"${a11y}>${inner}</div>
+    <div class="micro"${trend ? ` title="${esc(dockTrendTitle(s))}"` : ""}>${trend}</div>
+  </div>`;
 }
 
 function renderDock() {
   const dock = document.getElementById("dock");
   if (!dock) return;
-  // Before the first reading the bar keeps its five places, so the window does
-  // not grow into them once the numbers land.
-  const rows = status.length
-    ? visibleRows()
-    : ORDER.map((id) => ({ id, label: LABEL[id], state: "loading", windows: [] }));
-  dock.innerHTML = rows.map(dockTile).join("");
-  document.getElementById("panel").dataset.count = String(rows.length);
-  dockDetail(null);
+  const rows = dockRows();
+  dock.innerHTML = rows.map(dockCell).join("");
+  const names = document.getElementById("dock-names");
+  if (names) names.innerHTML = rows.map((s) => `<span>${esc(s.label)}</span>`).join("");
+  const panel = document.getElementById("panel");
+  panel.dataset.count = String(rows.length);
+  panel.style.setProperty("--cells", String(Math.max(1, rows.length)));
+  syncDockWidth();
+  syncDockColors();
+  renderDockChips();
+  renderDockColorbar();
 }
 
-/**
- * The one line of the tray's footer: the hovered tile's reset countdown and
- * its burn-rate ETA. Nothing at all when no tile is hovered — the bar stays
- * as quiet as the tin it is drawn after.
- */
-function dockDetail(s) {
-  const el = document.getElementById("dock-detail");
-  if (!el) return;
-  if (!s) {
-    el.textContent = "";
-    el.classList.remove("on");
+/** How each service is connected: through a web sign-in, through its CLI, or not. */
+function dockChipState(id) {
+  if (webLogins.includes(id)) return "signed-in";
+  const s = status.find((x) => x.id === id);
+  return s && hasNumbers(s) ? "connected" : "not";
+}
+
+function renderDockChips() {
+  const box = document.getElementById("dock-logins");
+  if (!box) return;
+  box.innerHTML = dockRows()
+    .filter((s) => s.state !== "loading")
+    .map((s) => {
+      const st = dockChipState(s.id);
+      const state =
+        st === "signed-in" ? t("signOut") : st === "connected" ? t("dockConnected") : t("notConnectedShort");
+      return `<button class="chip${st === "not" ? "" : " on"}" type="button" data-login="${s.id}" title="${esc(
+        LABEL[s.id]
+      )}"><span class="dot"></span>${esc(LABEL[s.id])} · ${esc(state)}</button>`;
+    })
+    .join("");
+}
+
+function dockColorItem(s) {
+  const id = s.id;
+  return `<div class="cb-item" data-color="${id}">
+      <div class="cb-top">
+        <span class="cb-name">${esc(LABEL[id])}</span>
+        <button class="cb-reset" type="button" data-reset-color title="${esc(t("reset"))}">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 8a4.8 4.8 0 1 0 1.4-3.4M3.2 2.2v2.9h2.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <div class="cb-mid">
+        <label class="cb-swatch" title="${esc(t("pick"))}"><input type="color" data-color-input aria-label="${esc(
+          LABEL[id]
+        )} ${esc(t("pick"))}"></label>
+        <span class="cb-hex" data-hex></span>
+      </div>
+      <div class="cb-presets">${DOCK_PRESETS.map(
+        (p) => `<button type="button" data-preset="${p}" style="--p:${p}" title="${p.toUpperCase()}"></button>`
+      ).join("")}</div>
+    </div>`;
+}
+
+function renderDockColorbar() {
+  const grid = document.getElementById("cb-grid");
+  if (!grid) return;
+  const ids = dockRows().map((s) => s.id);
+  const have = Array.from(grid.querySelectorAll(".cb-item")).map((el) => el.dataset.color);
+  // Rebuild only when the set of services changed: a rebuild while the system
+  // colour picker is open would close it.
+  if (ids.join() !== have.join()) grid.innerHTML = dockRows().map(dockColorItem).join("");
+  syncDockColorbar();
+}
+
+function syncDockColorbar() {
+  document.querySelectorAll("#cb-grid .cb-item").forEach((item) => {
+    const id = item.dataset.color;
+    const hex = serviceColors[id] || DOCK_ACCENT[id] || "#9a9aa2";
+    item.querySelector("[data-hex]").textContent = hex.toUpperCase();
+    item.querySelector(".cb-swatch").style.setProperty("--sw", hex);
+    const input = item.querySelector("[data-color-input]");
+    // Don't fight the open picker while the user drags in it.
+    if (document.activeElement !== input) input.value = hex;
+    item.querySelector("[data-reset-color]").disabled = !serviceColors[id];
+    item.querySelectorAll("[data-preset]").forEach((b) => b.classList.toggle("on", b.dataset.preset === hex));
+  });
+}
+
+/** Paint a picked colour onto its squircle, through the contrast-safe ink. */
+function syncDockColors() {
+  for (const id of DOCK_ORDER) {
+    const cell = document.querySelector(`#dock .cell[data-id="${id}"]`);
+    if (!cell) continue;
+    const pick = serviceColors[id];
+    cell.classList.toggle("custom", !!pick);
+    if (pick) cell.style.setProperty("--ink", inkFor(pick, TILE_BG[id]));
+    else cell.style.removeProperty("--ink");
+  }
+}
+
+/** The window is the dock: 788 px for five cells, less for fewer, never clipped. */
+function syncDockWidth() {
+  const panel = document.getElementById("panel");
+  if (!panel) return;
+  const n = Math.max(1, Number(panel.dataset.count || DOCK_ORDER.length));
+  if (settings.view !== "dock" || panel.classList.contains("settings-open")) {
+    panel.style.width = "";
     return;
   }
-  if (!hasNumbers(s)) {
-    el.textContent =
-      s.state === "loading" ? t("loading")
-      : s.state === "expired" ? t("expiredShort")
-      : t("notConnectedShort");
-    el.classList.add("on");
-    return;
-  }
-  const w = headline(s);
-  const eta = etaSeconds(s);
-  el.innerHTML =
-    `<span data-reset="${w.resetsAt ?? ""}" data-reset-fmt="timer">${esc(dockReset(w.resetsAt))}</span>` +
-    (eta != null ? `<span class="dock-sep">·</span><span class="dock-eta">${esc(t("eta")(fmtTimer(eta)))}</span>` : "");
-  el.classList.add("on");
-  // A three-tile dock leaves the footer a narrow gap: drop the ETA rather than
-  // cut a number in half. The countdown — the part that moves — always stays.
-  const extra = el.querySelector(".dock-eta");
-  if (extra && el.scrollWidth > el.clientWidth) {
-    const sep = el.querySelector(".dock-sep");
-    if (sep) sep.remove();
-    extra.remove();
-  }
+  // Five cells give 788 px; fewer narrow the bar — but never past the two
+  // pills above it, which are the narrowest thing the frame has to hold.
+  panel.style.width = `${Math.max(MIN_W, n * CELL_W + (n - 1) * CELL_GAP + FRAME_W)}px`;
+}
+
+/** The shortcut switch in the drawer's foot: on shows the keys, off says so. */
+function paintDockShortcut() {
+  const btn = document.getElementById("dock-shortcut");
+  if (!btn) return;
+  const on = !!settings.shortcut;
+  btn.classList.toggle("on", on);
+  // The dock spells the chord the way the original did: ⌘⇧U / Ctrl+⇧U.
+  btn.textContent = on ? (IS_MAC ? "⌘⇧U" : "Ctrl+⇧U") : t("shortcut");
+  btn.setAttribute("aria-pressed", on ? "true" : "false");
+  btn.title = t(on ? "dockShortcutOn" : "dockShortcutOff");
+}
+
+/** 配色 opens the drawer under the row; the window grows to fit it. */
+function showDockColorbar(show) {
+  const bar = document.getElementById("colorbar");
+  const btn = document.getElementById("dock-colors");
+  if (!bar || !btn) return;
+  bar.hidden = !show;
+  btn.classList.toggle("on", show);
+  btn.setAttribute("aria-expanded", show ? "true" : "false");
+  fitWindow();
 }
 
 function renderServices() {
@@ -1011,8 +1161,11 @@ function applyI18n() {
   renderColorRows();
   paintShortcutSeg();
   showShortcutState();
+  paintDockShortcut();
   syncViewSegs();
   syncSettingsScroll();
+  // The dock spells its own labels out in the same language.
+  renderDock();
 }
 
 // --------------------------------------------------------------- actions
@@ -1067,11 +1220,12 @@ function showView(name) {
   document.getElementById("view-usage").hidden = settingsOpen || dock;
   document.getElementById("view-dock").hidden = settingsOpen || !dock;
   document.getElementById("view-settings").hidden = !settingsOpen;
+  syncDockWidth();
   if (settingsOpen) syncSettingsScroll();
   fitWindow();
 }
 
-/** Switch between the rings popover and the compact dock bar. */
+/** Switch between the rings popover and the dock panel. */
 function applyView() {
   document.getElementById("panel").dataset.view = settings.view === "dock" ? "dock" : "concentric";
   syncViewSegs();
@@ -1137,6 +1291,7 @@ function paintShortcutSeg() {
  */
 function applyShortcut() {
   paintShortcutSeg();
+  paintDockShortcut();
   const note = document.getElementById("shortcut-note");
   note.hidden = true;
   if (PREVIEW) return;
@@ -1148,6 +1303,7 @@ function applyShortcut() {
       localStorage.setItem("shortcut", settings.shortcut);
       paintShortcutSeg();
       showShortcutState();
+      paintDockShortcut();
     })
     .catch(() => {
       // Nothing is held now, so the switch has to say so.
@@ -1159,6 +1315,7 @@ function applyShortcut() {
       );
       note.textContent = t("scTaken");
       note.hidden = false;
+      paintDockShortcut();
     });
 }
 
@@ -1201,6 +1358,8 @@ async function boot() {
   if (wantView === "dock" || wantView === "concentric") settings.view = wantView;
   const wantLang = params.get("lang");
   if (wantLang === "zh" || wantLang === "en") settings.lang = wantLang;
+  const wantMode = params.get("mode");
+  if (wantMode === "used" || wantMode === "left") settings.mode = wantMode;
   if (params.get("hide") === "1") settings.hideDisconnected = true;
   document.getElementById("panel").dataset.view = settings.view;
 
@@ -1286,8 +1445,9 @@ async function boot() {
   });
   if (!PREVIEW) invoke("set_edge_enabled", { enabled: settings.edgeTuck }).catch(() => {});
 
-  // The dock bar carries its own copies of the controls that matter there:
-  // view, Used/Left, edge tuck, settings, refresh. Same state, same storage.
+  // The dock view carries the controls the original dock had: two pill
+  // toggles, the status chips, 配色 / 贴边 / 刷新 / 退出, and the colors
+  // drawer behind 配色. Same state and storage as the settings page.
   const dockEdge = document.getElementById("dock-edge");
   function syncDockEdge() {
     dockEdge.classList.toggle("on", settings.edgeTuck);
@@ -1301,8 +1461,34 @@ async function boot() {
     syncDockEdge();
     if (!PREVIEW) invoke("set_edge_enabled", { enabled: settings.edgeTuck }).catch(() => {});
   });
-  document.getElementById("dock-settings").addEventListener("click", () => showView("settings"));
   document.getElementById("dock-refresh").addEventListener("click", refresh);
+  document.getElementById("dock-quit").addEventListener("click", () => invoke("quit").catch(() => {}));
+
+  // 配色 opens the drawer under the chips row; the window grows to fit it.
+  document.getElementById("dock-colors").addEventListener("click", () =>
+    showDockColorbar(document.getElementById("colorbar").hidden)
+  );
+  const cbGrid = document.getElementById("cb-grid");
+  cbGrid.addEventListener("input", (e) => {
+    const input = e.target.closest("[data-color-input]");
+    const item = input && input.closest(".cb-item");
+    if (item) setColor(item.dataset.color, input.value);
+  });
+  cbGrid.addEventListener("click", (e) => {
+    const item = e.target.closest(".cb-item");
+    if (!item) return;
+    const preset = e.target.closest("[data-preset]");
+    if (preset) setColor(item.dataset.color, preset.dataset.preset);
+    else if (e.target.closest("[data-reset-color]")) resetColor(item.dataset.color);
+  });
+  document.getElementById("dock-colors-reset-all").addEventListener("click", resetAllColors);
+  document.getElementById("dock-shortcut").addEventListener("click", () => {
+    settings.shortcut = settings.shortcut ? "" : SHORTCUTS[0];
+    localStorage.setItem("shortcut", settings.shortcut);
+    applyShortcut();
+    paintDockShortcut();
+  });
+
   document.querySelectorAll(".view-seg").forEach((seg) =>
     seg.addEventListener("click", (e) => {
       const b = e.target.closest("button");
@@ -1311,21 +1497,28 @@ async function boot() {
   );
   const dock = document.getElementById("dock");
   dock.addEventListener("click", (e) => {
-    const tile = e.target.closest(".dtile");
+    const tile = e.target.closest(".tile.off");
     if (!tile) return;
-    const s = status.find((x) => x.id === tile.dataset.id);
-    if (!s || hasNumbers(s)) return;
-    // A quiet tile is the way to fix it: web sign-in where the app can do it,
-    // and the drawer (which says how to connect) for the CLI-backed ones.
-    if (WEB_IDS.includes(s.id)) signIn(s.id);
+    const id = tile.closest(".cell").dataset.id;
+    // A quiet squircle is the way to fix it: web sign-in where the app can do
+    // it, the settings page (which says how to connect) for the CLI-backed ones.
+    if (WEB_IDS.includes(id)) signIn(id);
     else showView("settings");
   });
-  dock.addEventListener("mouseover", (e) => {
-    const tile = e.target.closest(".dtile");
+  dock.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const tile = e.target.closest(".tile.off");
     if (!tile) return;
-    dockDetail(status.find((x) => x.id === tile.dataset.id));
+    e.preventDefault();
+    tile.click();
   });
-  dock.addEventListener("mouseleave", () => dockDetail(null));
+  document.getElementById("dock-logins").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-login]");
+    if (!b) return;
+    const id = b.dataset.login;
+    if (dockChipState(id) === "not" && WEB_IDS.includes(id)) signIn(id);
+    else showView("settings");
+  });
 
   // Colors: the native picker streams "input" while it is open, so the rings
   // and bars repaint as the user drags through it.
@@ -1385,6 +1578,7 @@ async function boot() {
 
   if (PREVIEW) {
     if (params.get("view") === "settings") showView("settings");
+    if (params.has("colors")) showDockColorbar(true);
     if (params.has("edge")) setEdgeState(params.get("edge"), params.get("edge-hidden") === "1");
     setTimeout(() => {
       seedDemoHistory(params.get("state"));

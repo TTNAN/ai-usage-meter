@@ -1,6 +1,23 @@
 /* AI Usage Meter — popover styles.
    Quiet graphite surfaces, hairline borders, one accent per service. */
 
+/* The Dock's two faces — the big numbers and the countdown of the original
+   ai-usage-meter-dock design. Only the Dock view asks for them. */
+@font-face {
+  font-family: "Inter Dock";
+  src: url("assets/fonts/Inter-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono Dock";
+  src: url("assets/fonts/JetBrainsMono-Variable.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --c-claude: #e08a6b;
   --c-codex: #6e9bff;
@@ -93,12 +110,13 @@ svg { display: block; }
   display: flex;
   flex-direction: column;
 }
-/* The Dock view is a floating bar: the window is as wide as its tiles, not
-   the rings' 372 px. Settings still opens at the popover's own width. */
+/* The Dock view is its own card: the window is as wide as its cells (the page
+   measures it), not the rings' 372 px. Settings still opens at the popover's
+   own width. */
 .panel[data-view="dock"] { width: max-content; }
 .panel[data-view="dock"].settings-open { width: 372px; }
 /* In Dock view the popover header and footer belong to the settings drawer
-   only; the dock bar carries its own slim footer. */
+   only; the dock carries its own pill row and footer. */
 .panel[data-view="dock"]:not(.settings-open) .top,
 .panel[data-view="dock"]:not(.settings-open) .bottom { display: none; }
 html.preview .panel { box-shadow: var(--shadow), inset 0 0 0 1px var(--hair-strong); max-height: calc(100vh - 48px); }
@@ -304,219 +322,386 @@ html:not(.vibrancy):not(.preview) .panel { background: var(--bg-solid); }
 @keyframes shimmer { to { background-position: -200% 0; } }
 
 /* ------------------------------------------------------------- dock */
-/* The compact bar: one brand-coloured squircle per service, rising a little
-   above a slim translucent tray that carries the names and the controls.
-   Inside a tile there is only the official mark, one restrained line —
-   `58% left` — and a 3 px bar; the reset countdown and the burn-rate ETA
-   are one hover away, in the tooltip and in the tray's single footer line.
-   Nothing is a grey box: the tile is the service's own colour, flat. */
-.view-dock { padding: 0; animation: viewIn 0.28s var(--ease); }
-.dock-stage { position: relative; padding: 4px 0 0; }
-/* The tray: a dark pane of glass under the squircles, with a hairline rim,
-   a top highlight and a soft drop shadow — and the tiles' bottom third
-   sitting inside it. */
-.dock-tray {
-  position: absolute; left: 0; right: 0; top: 16px; bottom: 0; z-index: 0;
-  border-radius: 26px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.095), rgba(255, 255, 255, 0.025) 46%, rgba(0, 0, 0, 0.06)),
-    rgba(28, 28, 33, 0.87);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.13),
-    inset 0 0 0 0.5px rgba(255, 255, 255, 0.1),
-    0 5px 14px rgba(0, 0, 0, 0.42),
-    0 1px 4px rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(22px) saturate(160%);
-  -webkit-backdrop-filter: blur(22px) saturate(160%);
+/* The Dock view is the original ai-usage-meter-dock design, ported whole:
+   one pill toggle above (numbers, then the view switch), brand squircles
+   rising out of a dark tray with the names under it, then a single row of
+   status chips and four quiet buttons, and the 服务配色 drawer under that.
+   Everything is scoped to .view-dock so the rings popover is untouched, and
+   every surface goes through the --dock-* variables, so the light theme is
+   the same layout in a different palette. */
+
+html .panel[data-view="dock"]:not(.settings-open) {
+  --dock-ink: #ececf1;
+  --dock-ink-2: rgba(255, 255, 255, 0.62);
+  --dock-ink-3: rgba(255, 255, 255, 0.42);
+  --dock-hair: rgba(255, 255, 255, 0.08);
+  --dock-hair-2: rgba(255, 255, 255, 0.16);
+  --dock-raise: rgba(255, 255, 255, 0.03);
+  --dock-raise-hover: rgba(255, 255, 255, 0.07);
+  --dock-surface: #0b0b13;
+  --dock-tray: #151517;
+  --dock-pill: rgba(255, 255, 255, 0.06);
+  --dock-pill-ink: rgba(255, 255, 255, 0.45);
+  --dock-pill-on: #f2f2f4;
+  --dock-pill-on-ink: #111114;
+  --dock-tray-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.6),
+    0 2px 8px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --dock-tile-shadow: 0 12px 28px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+
+  width: max-content;
+  padding: 30px 12px 22px;
+  background: var(--dock-surface);
+  border-radius: 16px;
+  box-shadow: none;
+  overflow: visible;
+  align-items: center;
 }
 @media (prefers-color-scheme: light) {
-  .dock-tray {
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.5)),
-      rgba(234, 234, 239, 0.8);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.95),
-      inset 0 0 0 0.5px rgba(0, 0, 0, 0.09),
-      0 5px 14px rgba(28, 28, 38, 0.18),
-      0 1px 4px rgba(0, 0, 0, 0.07);
+  html .panel[data-view="dock"]:not(.settings-open) {
+    --dock-ink: #18181b;
+    --dock-ink-2: rgba(24, 24, 27, 0.66);
+    --dock-ink-3: rgba(24, 24, 27, 0.5);
+    --dock-hair: rgba(0, 0, 0, 0.08);
+    --dock-hair-2: rgba(0, 0, 0, 0.12);
+    --dock-raise: rgba(0, 0, 0, 0.03);
+    --dock-raise-hover: rgba(0, 0, 0, 0.06);
+    --dock-surface: #f7f7f9;
+    --dock-tray: #e9e9ef;
+    --dock-pill: rgba(0, 0, 0, 0.05);
+    --dock-pill-ink: rgba(24, 24, 27, 0.5);
+    --dock-pill-on: #18181b;
+    --dock-pill-on-ink: #ffffff;
+    --dock-tray-shadow:
+      0 20px 40px rgba(24, 24, 40, 0.16),
+      0 2px 8px rgba(0, 0, 0, 0.07),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    --dock-tile-shadow: 0 10px 22px rgba(24, 24, 40, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.25);
   }
 }
-.dock {
-  position: relative; z-index: 1;
-  display: flex; justify-content: center; gap: 10px; padding: 0 12px;
-}
-.dtile {
-  position: relative; flex: none; width: 94px;
+
+.view-dock {
+  padding: 0; animation: viewIn 0.28s var(--ease);
+  /* A flex column, like the original panel: block siblings would collapse the
+     pill's 16 px into the tray's 44 px and lift the whole dock too high. */
   display: flex; flex-direction: column; align-items: center;
-}
-/* Brand backgrounds, flat — the markup the user already loves. Each tile
-   carries its own ink, mark colour, bar and bar track, so one line of CSS
-   keeps five very different surfaces legible. */
-.dtsq {
-  width: 94px; height: 94px; padding: 0 9px;
-  border-radius: 21px;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: var(--tile-bg); color: var(--tile-ink);
-  box-shadow:
-    0 7px 16px rgba(0, 0, 0, 0.36),
-    0 1px 3px rgba(0, 0, 0, 0.24),
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    inset 0 0 0 0.5px rgba(0, 0, 0, 0.06);
-  transition: transform 0.18s var(--ease), box-shadow 0.18s var(--ease);
-}
-.dtile:hover .dtsq {
-  transform: translateY(-2px);
-  box-shadow:
-    0 11px 22px rgba(0, 0, 0, 0.42),
-    0 2px 5px rgba(0, 0, 0, 0.26),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    inset 0 0 0 0.5px rgba(0, 0, 0, 0.06);
-}
-.dtile:active .dtsq { transform: translateY(0) scale(0.985); }
-.dtile:focus-visible { outline: none; }
-.dtile:focus-visible .dtsq {
-  box-shadow: 0 0 0 2px var(--bg-solid), 0 0 0 3.5px var(--accent), 0 7px 16px rgba(0, 0, 0, 0.36);
+  /* One face for the whole dock, as in the original: Inter for every label,
+     JetBrains Mono for the numbers that tick. */
+  font-family: "Inter Dock", -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  line-height: normal;
 }
 
-.dtile[data-id="codex"] {
-  --tile-bg: #ffffff; --tile-ink: #2a63e8; --tile-mark: #17181c;
-  --tile-bar: #2a63e8; --tile-track: rgba(42, 99, 232, 0.16);
+/* The pill row above the tray: numbers on the left, the view switch beside
+   it, both drawn as the same pill so the pair reads as one control. */
+.view-dock .dock-bar {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin-bottom: 16px;
 }
-.dtile[data-id="claude"] {
-  --tile-bg: #d97757; --tile-ink: #ffffff; --tile-mark: #ffffff;
-  --tile-bar: #ffffff; --tile-track: rgba(255, 255, 255, 0.3);
+.view-dock .dock-bar .seg {
+  display: inline-flex; gap: 2px; padding: 3px;
+  background: var(--dock-pill);
+  border: 1px solid var(--dock-hair);
+  border-radius: 999px;
+  box-shadow: none;
 }
-.dtile[data-id="grok"] {
-  --tile-bg: #0d0d10; --tile-ink: #ffffff; --tile-mark: #ffffff;
-  --tile-bar: #a78bfa; --tile-track: rgba(255, 255, 255, 0.17);
+.view-dock .dock-bar .seg button {
+  font-size: 12.5px; font-weight: 600; letter-spacing: 0.03em;
+  color: var(--dock-pill-ink);
+  padding: 4px 16px; border-radius: 999px;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
 }
-.dtile[data-id="grok"] .dtsq { box-shadow: 0 7px 16px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.26), inset 0 0 0 0.5px rgba(255, 255, 255, 0.13); }
-/* The two pale tiles need an edge of their own to sit crisply on a light tray. */
-.dtile[data-id="codex"] .dtsq,
-.dtile[data-id="gemini"] .dtsq {
-  box-shadow: 0 7px 16px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2), inset 0 0 0 0.5px rgba(0, 0, 0, 0.09);
-}
-@media (prefers-color-scheme: light) {
-  .dtsq { box-shadow: 0 6px 14px rgba(18, 18, 30, 0.2), 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.2), inset 0 0 0 0.5px rgba(0, 0, 0, 0.055); }
-  .dtile:hover .dtsq { box-shadow: 0 9px 20px rgba(18, 18, 30, 0.24), 0 2px 4px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 0 0 0.5px rgba(0, 0, 0, 0.055); }
-  .dtile[data-id="grok"] .dtsq { box-shadow: 0 6px 14px rgba(18, 18, 30, 0.26), 0 1px 3px rgba(0, 0, 0, 0.14), inset 0 0 0 0.5px rgba(255, 255, 255, 0.14); }
-  .dtile[data-id="codex"] .dtsq,
-  .dtile[data-id="gemini"] .dtsq { box-shadow: 0 6px 14px rgba(18, 18, 30, 0.16), 0 1px 2px rgba(0, 0, 0, 0.08), inset 0 0 0 0.5px rgba(0, 0, 0, 0.1); }
-}
-.dtile[data-id="gemini"] {
-  --tile-bg: #eff3fd; --tile-ink: #1b2559; --tile-mark: #1b2559;
-  --tile-bar: #3186ff; --tile-track: rgba(27, 37, 89, 0.14);
-}
-.dtile[data-id="copilot"] {
-  --tile-bg: #17252a; --tile-ink: #f2f7f5; --tile-mark: #f2f7f5;
-  --tile-bar: #34d399; --tile-track: rgba(52, 211, 153, 0.22);
-}
-/* A colour picked in Settings paints this tile's number and bar; `--ink` is
-   the contrast-safe version the page works out, so it still reads on white
-   as well as on obsidian. The mark and the surface stay the brand's own. */
-.dtile.custom {
-  --tile-ink: var(--ink); --tile-bar: var(--ink);
-  --tile-track: color-mix(in srgb, var(--ink) 18%, transparent);
+.view-dock .dock-bar .seg button:hover { color: var(--dock-ink); }
+.view-dock .dock-bar .seg button.on {
+  background: var(--dock-pill-on);
+  color: var(--dock-pill-on-ink);
+  box-shadow: none;
 }
 
-.dicon { width: 24px; height: 24px; display: grid; place-items: center; color: var(--tile-mark); margin-bottom: 9px; }
-.dicon i {
-  width: 22px; height: 22px; background: currentColor;
+/* The tray: a dark pane under the squircles, which sit a third of the way
+   above its top edge. */
+.view-dock .dock {
+  display: flex; justify-content: center;
+  /* The tray spans the panel (the page sizes the window from the cells), so a
+     three-service dock and the row under it stay one block. */
+  width: 100%;
+  margin-top: 44px;
+  background: var(--dock-tray);
+  border: 1px solid var(--dock-hair);
+  border-radius: 36px;
+  padding: 0 24px 26px;
+  box-shadow: var(--dock-tray-shadow);
+}
+.view-dock .cell { width: 132px; display: flex; flex-direction: column; align-items: center; }
+.view-dock .cell + .cell { margin-left: 14px; }
+
+/* The squircle: 1:1, flat brand colour, the mark at the top, one line of
+   numbers, a hairline bar, the countdown — and the trend line just under
+   the tile, on the tray. */
+.view-dock .tile {
+  margin-top: -30px; width: 124px; height: 124px; border-radius: 26px;
+  display: flex; flex-direction: column; align-items: center;
+  box-shadow: var(--dock-tile-shadow);
+  overflow: hidden;
+}
+.view-dock .tile-chatgpt { background: #ffffff; }
+.view-dock .tile-claude { background: #d97757; }
+.view-dock .tile-grok { background: #0d0d10; box-shadow: var(--dock-tile-shadow), inset 0 0 0 0.5px rgba(255, 255, 255, 0.14); }
+.view-dock .tile-gemini { background: #eff3fd; box-shadow: var(--dock-tile-shadow), inset 0 0 0 0.5px rgba(0, 0, 0, 0.10); }
+.view-dock .tile-copilot { background: #17252a; box-shadow: var(--dock-tile-shadow), inset 0 0 0 0.5px rgba(255, 255, 255, 0.10); }
+
+.view-dock .mark { margin-top: 12px; width: 38px; height: 38px; display: grid; place-items: center; }
+.view-dock .mark i {
+  width: 38px; height: 38px; display: block;
+  background: currentColor;
   -webkit-mask: var(--glyph) center / contain no-repeat;
   mask: var(--glyph) center / contain no-repeat;
 }
-.dicon img { width: 23px; height: 23px; display: block; }
-.dtile[data-id="claude"] .dicon i { --glyph: url(icons/claude.svg); }
-.dtile[data-id="codex"] .dicon i { --glyph: url(icons/codex.svg); }
-.dtile[data-id="grok"] .dicon i { --glyph: url(icons/grok.svg); width: 21px; height: 21px; }
-.dtile[data-id="copilot"] .dicon i { --glyph: url(icons/copilot.svg); width: 23px; height: 23px; }
+.view-dock .mark img { width: 36px; height: 36px; display: block; }
+.view-dock .tile-chatgpt .mark { color: #101014; }
+.view-dock .tile-chatgpt .mark i { --glyph: url(icons/codex.svg); }
+.view-dock .tile-claude .mark { color: #ffffff; }
+.view-dock .tile-claude .mark i { --glyph: url(icons/claude.svg); }
+.view-dock .tile-grok .mark { color: #ffffff; }
+.view-dock .tile-grok .mark i { --glyph: url(icons/grok.svg); width: 30px; height: 30px; }
+.view-dock .tile-copilot .mark { color: #ffffff; }
+.view-dock .tile-copilot .mark i { --glyph: url(icons/copilot.svg); width: 34px; height: 34px; }
 
-/* One line: the number, the sign, and the one word that says which way it
-   reads. Restrained on purpose — the mark above it is the biggest thing. */
-.dpct {
-  display: flex; align-items: baseline; gap: 0;
-  font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap;
+/* Two faces, used consistently: Inter for the big number and its sign,
+   JetBrains Mono for the countdown — the original dock's own pairing. */
+.view-dock .pct-line {
+  margin-top: 7px; display: flex; align-items: baseline; gap: 4px;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-.dpct b { font-size: 15px; font-weight: 650; letter-spacing: -0.025em; }
-.dpct em { font-size: 10px; font-weight: 600; font-style: normal; letter-spacing: 0; opacity: 0.86; margin-left: 0.5px; }
-.dpct .dword { font-size: 10.5px; font-weight: 550; letter-spacing: 0.01em; opacity: 0.8; margin-left: 3px; }
-.dbar {
-  margin-top: 11px; width: 56px; height: 3px; border-radius: 99px;
-  background: var(--tile-track); overflow: hidden;
-}
-.dbar > i {
-  display: block; height: 100%; border-radius: inherit; background: var(--tile-bar);
-  transition: width 0.8s var(--ease), background 0.3s;
-}
-.dtile.out { --tile-bar: #ff5f57; }
-
-/* Not connected: an empty slot in the same place, the brand mark faded, and
-   the one word that says why. The tooltip carries the how. */
-.dtile.off { --tile-bg: #25252b; --tile-ink: var(--text-2); --tile-mark: var(--text-2); }
-@media (prefers-color-scheme: light) { .dtile.off { --tile-bg: #efeff3; } }
-.dtile.off .dtsq, .dtile.off:hover .dtsq { box-shadow: inset 0 0 0 0.5px rgba(127, 127, 137, 0.26); transform: none; }
-.dtile.off .dicon { opacity: 0.42; filter: grayscale(1); }
-.dtile.off .dpct, .dtile.off .dbar { display: none; }
-.dtile.off .doff {
-  margin-top: 8px; font-size: 10px; font-weight: 600;
-  letter-spacing: 0.02em; color: var(--text-3); white-space: nowrap;
-}
-
-/* The name under each squircle, on the tray. */
-.dcap {
-  margin-top: 6px; height: 13px; width: 100%;
-  display: grid; place-items: center;
-  font-size: 10.5px; font-weight: 600; letter-spacing: 0.01em;
-  color: var(--text-2); white-space: nowrap;
-}
-
-/* The tray's footer: the two switches, the hovered tile's detail in the
-   gap, and three quiet buttons at the right. */
-.dock-foot {
-  position: relative; z-index: 1;
-  display: flex; align-items: center; gap: 5px;
-  height: 22px; margin: 4px 12px 0; padding: 0 2px;
-}
-.dock-foot::before {
-  content: ""; position: absolute; left: -4px; right: -4px; top: -3px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--hair) 10%, var(--hair) 90%, transparent);
-}
-.dock-foot .seg { padding: 1.5px; background: rgba(255, 255, 255, 0.045); box-shadow: none; }
-@media (prefers-color-scheme: light) { .dock-foot .seg { background: rgba(0, 0, 0, 0.04); } }
-.dock-foot .seg button { font-size: 10px; font-weight: 550; padding: 2px 7px; border-radius: 5px; color: var(--text-3); }
-.dock-foot .seg button.on { background: rgba(255, 255, 255, 0.1); color: var(--text); box-shadow: inset 0 0 0 0.5px var(--hair-strong); }
-@media (prefers-color-scheme: light) { .dock-foot .seg button.on { background: #fff; } }
-.dock-detail {
-  flex: 1; min-width: 0; padding: 0 6px 0 5px;
-  font-size: 10px; color: var(--text-3); white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis;
+.view-dock .pct-line > * { flex-shrink: 0; }
+.view-dock .pct-line .num,
+.view-dock .pct-line .pct-sign {
+  font-family: "Inter Dock", -apple-system, "Segoe UI", sans-serif;
+  font-size: 19px; font-weight: 700; letter-spacing: -0.02em; line-height: 1;
   font-variant-numeric: tabular-nums;
-  opacity: 0; transition: opacity 0.15s;
 }
-.dock-detail.on { opacity: 1; }
-.dock-detail .dock-sep { margin: 0 5px; opacity: 0.65; }
-.dock-actions { display: flex; gap: 1px; margin-left: auto; }
-.dock-btn {
-  width: 20px; height: 20px; border-radius: 6px; flex: none;
-  display: grid; place-items: center; color: var(--text-2);
+.view-dock .pct-line .tag-mode {
+  font-size: 13px; font-weight: 700; letter-spacing: 0.02em; margin-left: 1px;
+}
+.view-dock .tile-chatgpt .num, .view-dock .tile-chatgpt .pct-sign, .view-dock .tile-chatgpt .tag-mode { color: #2f6fed; }
+.view-dock .tile-claude .num, .view-dock .tile-claude .pct-sign, .view-dock .tile-claude .tag-mode { color: #ffffff; }
+.view-dock .tile-grok .num, .view-dock .tile-grok .pct-sign, .view-dock .tile-grok .tag-mode { color: #ffffff; }
+.view-dock .tile-gemini .num, .view-dock .tile-gemini .pct-sign, .view-dock .tile-gemini .tag-mode { color: #1b2559; }
+.view-dock .tile-copilot .num, .view-dock .tile-copilot .pct-sign, .view-dock .tile-copilot .tag-mode { color: #f2f7f5; }
+
+.view-dock .bar {
+  margin-top: 8px; width: 96px; height: 3.5px; border-radius: 2px; overflow: hidden;
+}
+.view-dock .tile-chatgpt .bar { background: rgba(47, 111, 237, 0.18); }
+.view-dock .tile-claude .bar { background: rgba(255, 255, 255, 0.25); }
+.view-dock .tile-grok .bar { background: rgba(255, 255, 255, 0.16); }
+.view-dock .tile-gemini .bar { background: rgba(27, 37, 89, 0.14); }
+.view-dock .tile-copilot .bar { background: rgba(52, 211, 153, 0.2); }
+.view-dock .bar > i { display: block; height: 100%; border-radius: 2px; transition: width 0.8s var(--ease); }
+.view-dock .tile-chatgpt .bar i { background: #2f6fed; }
+.view-dock .tile-claude .bar i { background: #ffffff; }
+.view-dock .tile-grok .bar i { background: #a78bfa; }
+.view-dock .tile-gemini .bar i { background: #3186ff; }
+.view-dock .tile-copilot .bar i { background: #34d399; }
+
+.view-dock .reset {
+  margin-top: 8px;
+  font-family: "JetBrains Mono Dock", ui-monospace, monospace;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+/* English's "resets in 10d 23h" is wider than a 124 px squircle: long
+   countdowns step down a point so they stay inside it, close to the edge. */
+.view-dock .reset.long { font-size: 10.5px; letter-spacing: -0.02em; }
+.view-dock .tile-chatgpt .reset { color: #2f6fed; }
+.view-dock .tile-claude .reset, .view-dock .tile-grok .reset { color: rgba(255, 255, 255, 0.85); }
+.view-dock .tile-gemini .reset { color: #33488f; }
+.view-dock .tile-copilot .reset { color: #6ee7b7; }
+
+/* The trend under each squircle, on the tray: a 30×8 line and the ETA, the
+   only place the dock spends on "when will it run out". */
+.view-dock .micro {
+  margin-top: 7px; height: 10px;
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  opacity: 0.72;
+}
+.view-dock .micro .spark { flex: none; }
+.view-dock .micro .spark polyline {
+  fill: none; stroke: currentColor; stroke-width: 1.1; opacity: 1;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.view-dock .micro .eta {
+  font-family: "JetBrains Mono Dock", ui-monospace, monospace;
+  font-size: 8.5px; font-weight: 600; letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.view-dock .cell[data-id="codex"] .micro { color: #6e9bff; }
+.view-dock .cell[data-id="claude"] .micro { color: #e08a6b; }
+.view-dock .cell[data-id="grok"] .micro { color: #a78bfa; }
+.view-dock .cell[data-id="gemini"] .micro { color: #38bdf8; }
+.view-dock .cell[data-id="copilot"] .micro { color: #34d399; }
+@media (prefers-color-scheme: light) {
+  .view-dock .cell[data-id="codex"] .micro { color: #3d74f0; }
+  .view-dock .cell[data-id="claude"] .micro { color: #c2623f; }
+  .view-dock .cell[data-id="grok"] .micro { color: #7c4dff; }
+  .view-dock .cell[data-id="gemini"] .micro { color: #0e93a2; }
+  .view-dock .cell[data-id="copilot"] .micro { color: #2f9e51; }
+}
+
+/* A service with no numbers keeps its place: the mark faded, "--" where the
+   number goes, and one word that says why. */
+.view-dock .tile.off { cursor: pointer; }
+.view-dock .tile.off:focus-visible { outline: 2px solid var(--dock-pill-on); outline-offset: 2px; }
+.view-dock .tile.off .mark { opacity: 0.5; }
+.view-dock .tile.off .num, .view-dock .tile.off .tag-mode { opacity: 0.6; }
+.view-dock .tile.off .reset { opacity: 0.75; }
+
+/* A colour picked in the drawer repaints this squircle's number, bar and
+   countdown; `--ink` is the contrast-safe version the page works out, and
+   the surface and the mark stay the brand's own. */
+.view-dock .cell.custom .tile .num,
+.view-dock .cell.custom .tile .pct-sign,
+.view-dock .cell.custom .tile .tag-mode { color: var(--ink); }
+.view-dock .cell.custom .bar { background: color-mix(in srgb, var(--ink) 18%, transparent); }
+.view-dock .cell.custom .bar i { background: var(--ink); }
+.view-dock .cell.custom .tile .reset { color: color-mix(in srgb, var(--ink) 82%, transparent); }
+
+/* The names, one under each squircle. */
+.view-dock .names { display: flex; justify-content: center; margin-top: 12px; }
+.view-dock .names span {
+  width: 132px; text-align: center;
+  font-size: 15px; font-weight: 600; letter-spacing: 0.02em;
+  color: var(--dock-ink);
+}
+.view-dock .names span + span { margin-left: 14px; }
+
+/* One row: the connection state of every service on the left, the four
+   quiet controls on the right. */
+.view-dock .dock-foot {
+  width: 100%;
+  margin-top: 18px; padding-top: 12px;
+  border-top: 1px solid var(--dock-hair);
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 6px 8px; flex-wrap: wrap;
+}
+.view-dock .logins { display: flex; gap: 5px; flex-wrap: wrap; }
+.view-dock .chip {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 10.5px; font-weight: 600; color: var(--dock-ink-3);
+  padding: 4px 8px; border-radius: 999px;
+  border: 1px solid var(--dock-hair);
+  background: var(--dock-raise);
+  letter-spacing: 0.01em; white-space: nowrap;
   transition: background 0.15s, color 0.15s;
 }
-.dock-btn svg { width: 13px; height: 13px; }
-.dock-btn:hover { background: var(--raise-hover); color: var(--text); }
-.dock-btn.on { background: var(--raise-hover); color: var(--text); }
-.dock-btn.spinning svg { animation: spin 0.9s linear infinite; }
-
-/* In Dock view the window *is* the bar: no card behind it, the tray carries
-   its own glass. The 12 px of transparent air on each side and 13 px under it
-   are there for the tray's shadow — a window clips anything painted outside
-   its own bounds, and a dock without a soft shadow sits flat on the desktop. */
-.panel[data-view="dock"]:not(.settings-open) {
-  background: transparent; border-radius: 0; box-shadow: none; overflow: visible;
-  padding: 4px 12px 13px;
+.view-dock .chip:hover { background: var(--dock-raise-hover); color: var(--dock-ink-2); }
+.view-dock .chip .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  border: 1.5px solid var(--dock-ink-3); flex-shrink: 0;
+  background: none; transform: none;
 }
-html .panel[data-view="dock"]:not(.settings-open) {
-  background: transparent; box-shadow: none; max-height: none;
+.view-dock .chip.on { color: var(--dock-ink); }
+.view-dock .chip.on .dot { background: var(--dock-ink); border-color: var(--dock-ink); }
+.view-dock .foot-actions { display: flex; gap: 5px; flex-shrink: 0; margin-left: auto; }
+.view-dock .foot-actions button {
+  font-size: 11px; font-weight: 600; color: var(--dock-ink-3);
+  padding: 4px 9px; border-radius: 999px;
+  border: 1px solid var(--dock-hair);
+  background: var(--dock-raise);
+  transition: background 0.15s, color 0.15s;
+}
+.view-dock .foot-actions button:hover { background: var(--dock-raise-hover); color: var(--dock-ink); }
+.view-dock .foot-actions button.spinning { opacity: 0.5; }
+.view-dock .foot-actions button.on {
+  color: var(--dock-ink); background: var(--dock-raise-hover); border-color: var(--dock-hair-2);
+}
+
+/* The 服务配色 drawer: one glass card under the row, one cell per service,
+   and the shortcut switch along its foot. */
+.view-dock .colorbar {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 14px 12px; border-radius: 14px;
+  background: var(--dock-raise-hover);
+  border: 1px solid var(--dock-hair);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 10px 24px rgba(0, 0, 0, 0.35);
+  animation: cbIn 0.2s ease-out;
+}
+@media (prefers-color-scheme: light) {
+  .view-dock .colorbar {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 10px 24px rgba(24, 24, 40, 0.10);
+  }
+}
+@keyframes cbIn { from { opacity: 0; transform: translateY(-4px); } }
+.view-dock .cb-head { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.view-dock .cb-title {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--dock-ink-2);
+  white-space: nowrap;
+}
+.view-dock .cb-note { font-size: 10.5px; color: var(--dock-ink-3); }
+.view-dock .cb-head button {
+  margin-left: auto; font-size: 10.5px; font-weight: 600; color: var(--dock-ink-3);
+  padding: 3px 9px; border-radius: 999px; border: 1px solid var(--dock-hair);
+  background: var(--dock-raise); white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.view-dock .cb-head button:hover { background: var(--dock-raise-hover); color: var(--dock-ink); }
+.view-dock .cb-grid { display: grid; grid-template-columns: repeat(var(--cells, 5), minmax(0, 1fr)); gap: 8px; }
+.view-dock .cb-item {
+  padding: 7px 9px 8px; border-radius: 10px;
+  background: var(--dock-raise); border: 1px solid var(--dock-hair);
+}
+.view-dock .cb-top { display: flex; align-items: center; }
+.view-dock .cb-name { font-size: 11.5px; font-weight: 600; color: var(--dock-ink-2); letter-spacing: 0.01em; }
+.view-dock .cb-reset {
+  margin-left: auto; width: 15px; height: 15px; border-radius: 5px; flex-shrink: 0;
+  display: grid; place-items: center; color: var(--dock-ink-3);
+}
+.view-dock .cb-reset:hover { background: var(--dock-raise-hover); color: var(--dock-ink); }
+.view-dock .cb-reset:disabled { opacity: 0.3; }
+.view-dock .cb-reset:disabled:hover { background: none; color: var(--dock-ink-3); }
+.view-dock .cb-reset svg { width: 10px; height: 10px; }
+.view-dock .cb-mid { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
+.view-dock .cb-swatch {
+  position: relative; width: 15px; height: 15px; border-radius: 5px; flex-shrink: 0;
+  background: var(--sw); overflow: hidden;
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.28), 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.view-dock .cb-swatch:hover { box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4); }
+.view-dock .cb-swatch input {
+  position: absolute; inset: -5px; width: calc(100% + 10px); height: calc(100% + 10px);
+  opacity: 0; border: 0; padding: 0; background: none; cursor: pointer;
+}
+.view-dock .cb-hex {
+  font-family: "JetBrains Mono Dock", ui-monospace, monospace;
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0.01em;
+  color: var(--dock-ink-3); font-variant-numeric: tabular-nums;
+}
+.view-dock .cb-presets { display: flex; gap: 4px; margin-top: 7px; }
+.view-dock .cb-presets button {
+  width: 10px; height: 10px; border-radius: 50%; background: var(--p);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.22), 0 1px 1px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease;
+}
+.view-dock .cb-presets button:hover { transform: scale(1.25); }
+.view-dock .cb-presets button.on { box-shadow: 0 0 0 1.5px var(--dock-surface), 0 0 0 2.5px var(--p); }
+.view-dock .cb-foot {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 9px; padding-top: 9px;
+  border-top: 1px solid var(--dock-hair);
+}
+.view-dock .cb-foot .cb-note { margin-right: auto; }
+.view-dock .cb-foot button {
+  font-family: "JetBrains Mono Dock", ui-monospace, monospace;
+  font-size: 10.5px; font-weight: 600; color: var(--dock-ink-3);
+  padding: 3px 10px; border-radius: 999px; border: 1px solid var(--dock-hair);
+  background: var(--dock-raise); white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.view-dock .cb-foot button:hover { background: var(--dock-raise-hover); color: var(--dock-ink); }
+.view-dock .cb-foot button.on {
+  color: var(--dock-ink); background: var(--dock-raise-hover); border-color: var(--dock-hair-2);
 }
 
 /* ----------------------------------------------------------- settings */
