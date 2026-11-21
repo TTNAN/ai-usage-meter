@@ -34,6 +34,17 @@ const accent = (id) => `var(${ACCENT_VAR[id] || ACCENT_FALLBACK})`;
 // drawn as images; every other mark is a white glyph cut out with a CSS mask.
 const TILE_IMG = { gemini: "icons/gemini.svg" };
 const tileGlyph = (id) => (TILE_IMG[id] ? `<img src="${TILE_IMG[id]}" alt="">` : "<i></i>");
+// The flat surface each service's squircle is painted in the Dock view — the
+// brand's own colour, so a tile reads as the app it measures. The two light
+// ones need dark ink, the three dark ones white; `inkFor` sorts out a picked
+// colour that would otherwise vanish.
+const TILE_BG = {
+  codex: "#ffffff",
+  claude: "#d97757",
+  grok: "#0d0d10",
+  gemini: "#eff3fd",
+  copilot: "#17252a",
+};
 // Quick colours offered on every row of the Colors section.
 const PRESETS = ["#e08a6b", "#f5b04c", "#6e9bff", "#b38cff", "#5fc27e"];
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -60,6 +71,7 @@ const STRINGS = {
     viewRings: "Rings",
     viewDock: "Dock",
     dockEdge: "Tuck at screen edge",
+    dockReset: (d) => `resets in ${d}`,
     notConnectedShort: "Not connected",
     expiredShort: "Expired",
     refresh: "Refresh (⌘R)",
@@ -156,6 +168,7 @@ const STRINGS = {
     viewRings: "环图",
     viewDock: "Dock",
     dockEdge: "贴边自动收起",
+    dockReset: (d) => `${d} 后重置`,
     notConnectedShort: "未连接",
     expiredShort: "已过期",
     refresh: "刷新 (⌘R)",
@@ -319,6 +332,44 @@ function effectiveColor(id) {
   if (serviceColors[id]) return serviceColors[id];
   const v = getComputedStyle(document.documentElement).getPropertyValue(ACCENT_VAR[id] || "").trim();
   return HEX.test(v) ? v.toLowerCase() : "#9a9aa2";
+}
+
+// A colour is only useful if it can be read: WCAG relative luminance and the
+// contrast ratio between two hex colours, so the Dock can keep a picked
+// colour when it works on a white tile and push it darker (or lighter) on the
+// same tile when it would otherwise disappear.
+const rgbOf = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+const hexOf = (c) =>
+  "#" + c.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0")).join("");
+function luminance(hex) {
+  const [r, g, b] = rgbOf(hex).map((v) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+function contrast(a, b) {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+function mixHex(hex, target, t) {
+  const a = rgbOf(hex);
+  const b = rgbOf(target);
+  return hexOf(a.map((v, i) => v + (b[i] - v) * t));
+}
+/**
+ * A colour that reads on `bg`: the picked one itself while it has enough
+ * contrast, otherwise the same hue pushed toward black (light tile) or white
+ * (dark tile) just far enough to read.
+ */
+function inkFor(accent, bg) {
+  if (contrast(accent, bg) >= 3.0) return accent;
+  const target = luminance(bg) > 0.4 ? "#000000" : "#ffffff";
+  for (let t = 0.1; t <= 1.0001; t += 0.1) {
+    const c = mixHex(accent, target, t);
+    if (contrast(c, bg) >= 3.0) return c;
+  }
+  return target;
 }
 
 function applyColors() {
@@ -684,6 +735,22 @@ function resetSentence(resetsAt) {
   return left <= 0 ? t("resetsNow") : t("resetsIn")(fmtDur(left));
 }
 
+/** A countdown in the timer's own short hand — `2h 13m`, the same in every
+ *  language, because a timer reads the same everywhere. */
+function fmtTimer(secs) {
+  const d = Math.floor(secs / 86400);
+  const h = Math.floor((secs % 86400) / 3600);
+  const m = Math.max(0, Math.floor((secs % 3600) / 60));
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${Math.max(1, m)}m`;
+}
+
+/** The Dock's hover line: `2h 13m 后重置` / `resets in 2h 13m`. */
+function dockReset(resetsAt) {
+  if (resetsAt == null || resetsAt === "") return "—";
+  const left = resetsAt - Date.now() / 1000;
+  return left <= 0 ? t("resetsNow") : t("dockReset")(fmtTimer(left));
+}
+
 function serviceRow(s) {
   const live = hasNumbers(s);
   const used = live ? peakUsed(s) : null;
@@ -784,14 +851,23 @@ function dockTile(s) {
   const cls = ["dtile"];
   if (!live) cls.push("off");
   if (left != null && left <= 2) cls.push("out");
+  // A colour picked in Settings tints this tile's number and bar, through the
+  // contrast-safe ink; the surface and the mark stay the brand's own.
+  const pick = serviceColors[s.id];
+  const ink = pick ? inkFor(pick, TILE_BG[s.id]) : null;
+  if (ink) cls.push("custom");
   const value = live ? Math.max(0, Math.min(100, Math.round(shown(peakUsed(s))))) : null;
   const aria = live ? `${s.label} ${value}% ${dockLabel(s)}` : `${s.label} ${dockLabel(s)}`;
+  const inner = live
+    ? `<span class="dicon">${tileGlyph(s.id)}</span>
+       <span class="dpct"><b>${value}</b><em>%</em><span class="dword">${esc(dockLabel(s))}</span></span>
+       <span class="dbar"><i style="width:${value}%"></i></span>`
+    : `<span class="dicon">${tileGlyph(s.id)}</span>
+       <span class="doff">${esc(dockLabel(s))}</span>`;
   return `<button class="${cls.join(" ")}" type="button" data-id="${s.id}"
-      style="--accent: ${accent(s.id)}" title="${esc(dockTitle(s))}" aria-label="${esc(aria)}">
-    <span class="dicon">${tileGlyph(s.id)}</span>
-    <span class="dpct">${live ? `<b>${value}</b><small>%</small>` : "<b>—</b>"}</span>
-    <span class="dlabel">${esc(dockLabel(s))}</span>
-    <span class="dbar"><i style="width:${value == null ? 0 : value}%"></i></span>
+      style="--accent: ${accent(s.id)}${ink ? `; --ink: ${ink}` : ""}" title="${esc(dockTitle(s))}" aria-label="${esc(aria)}">
+    <span class="dtsq">${inner}</span>
+    <span class="dcap">${esc(s.label)}</span>
   </button>`;
 }
 
@@ -809,15 +885,40 @@ function renderDock() {
 }
 
 /**
- * The strip under the bar repeats what the hovered tile's tooltip says, in one
- * line — but only while there are enough tiles for the line to have room.
+ * The one line of the tray's footer: the hovered tile's reset countdown and
+ * its burn-rate ETA. Nothing at all when no tile is hovered — the bar stays
+ * as quiet as the tin it is drawn after.
  */
 function dockDetail(s) {
   const el = document.getElementById("dock-detail");
   if (!el) return;
-  const room = Number(document.getElementById("panel").dataset.count || 0) >= 4;
-  el.textContent = s ? dockTitle(s).split("\n").slice(1).join(" · ") : "";
-  el.classList.toggle("on", !!s && room);
+  if (!s) {
+    el.textContent = "";
+    el.classList.remove("on");
+    return;
+  }
+  if (!hasNumbers(s)) {
+    el.textContent =
+      s.state === "loading" ? t("loading")
+      : s.state === "expired" ? t("expiredShort")
+      : t("notConnectedShort");
+    el.classList.add("on");
+    return;
+  }
+  const w = headline(s);
+  const eta = etaSeconds(s);
+  el.innerHTML =
+    `<span data-reset="${w.resetsAt ?? ""}" data-reset-fmt="timer">${esc(dockReset(w.resetsAt))}</span>` +
+    (eta != null ? `<span class="dock-sep">·</span><span class="dock-eta">${esc(t("eta")(fmtTimer(eta)))}</span>` : "");
+  el.classList.add("on");
+  // A three-tile dock leaves the footer a narrow gap: drop the ETA rather than
+  // cut a number in half. The countdown — the part that moves — always stays.
+  const extra = el.querySelector(".dock-eta");
+  if (extra && el.scrollWidth > el.clientWidth) {
+    const sep = el.querySelector(".dock-sep");
+    if (sep) sep.remove();
+    extra.remove();
+  }
 }
 
 function renderServices() {
@@ -885,7 +986,9 @@ function fmtAgo(unixSecs) {
 function tick() {
   document.querySelectorAll("[data-reset]").forEach((el) => {
     const v = el.dataset.reset === "" ? null : parseFloat(el.dataset.reset);
-    el.textContent = el.dataset.resetFmt === "sentence" ? resetSentence(v) : fmtReset(v);
+    el.textContent = el.dataset.resetFmt === "sentence" ? resetSentence(v)
+      : el.dataset.resetFmt === "timer" ? dockReset(v)
+      : fmtReset(v);
   });
   document.querySelectorAll("[data-ago]").forEach((el) => {
     el.textContent = t("fromSession")(fmtAgo(parseFloat(el.dataset.ago)));

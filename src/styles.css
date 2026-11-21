@@ -304,83 +304,201 @@ html:not(.vibrancy):not(.preview) .panel { background: var(--bg-solid); }
 @keyframes shimmer { to { background-position: -200% 0; } }
 
 /* ------------------------------------------------------------- dock */
-/* One small tile per service and a 22 px strip of controls under it — no
-   names, no legends, no second line of text. The service's own icon, the
-   number, the one word that says what the number means, and a hairline bar
-   in the accent colour the user picked for it. Everything else (reset time,
-   trend, ETA) is a hover away, in the tooltip and in the strip below. */
-.view-dock {
-  padding: 10px 12px;
-  display: flex; flex-direction: column; gap: 8px;
-  animation: viewIn 0.28s var(--ease);
+/* The compact bar: one brand-coloured squircle per service, rising a little
+   above a slim translucent tray that carries the names and the controls.
+   Inside a tile there is only the official mark, one restrained line —
+   `58% left` — and a 3 px bar; the reset countdown and the burn-rate ETA
+   are one hover away, in the tooltip and in the tray's single footer line.
+   Nothing is a grey box: the tile is the service's own colour, flat. */
+.view-dock { padding: 0; animation: viewIn 0.28s var(--ease); }
+.dock-stage { position: relative; padding: 4px 0 0; }
+/* The tray: a dark pane of glass under the squircles, with a hairline rim,
+   a top highlight and a soft drop shadow — and the tiles' bottom third
+   sitting inside it. */
+.dock-tray {
+  position: absolute; left: 0; right: 0; top: 16px; bottom: 0; z-index: 0;
+  border-radius: 26px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.095), rgba(255, 255, 255, 0.025) 46%, rgba(0, 0, 0, 0.06)),
+    rgba(28, 28, 33, 0.87);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.13),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.1),
+    0 5px 14px rgba(0, 0, 0, 0.42),
+    0 1px 4px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
 }
-.dock { display: flex; justify-content: center; gap: 8px; }
+@media (prefers-color-scheme: light) {
+  .dock-tray {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.5)),
+      rgba(234, 234, 239, 0.8);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.95),
+      inset 0 0 0 0.5px rgba(0, 0, 0, 0.09),
+      0 5px 14px rgba(28, 28, 38, 0.18),
+      0 1px 4px rgba(0, 0, 0, 0.07);
+  }
+}
+.dock {
+  position: relative; z-index: 1;
+  display: flex; justify-content: center; gap: 10px; padding: 0 12px;
+}
 .dtile {
-  position: relative; flex: none;
-  width: 88px; height: 88px; padding: 10px 9px 11px;
-  border-radius: 16px;
+  position: relative; flex: none; width: 94px;
   display: flex; flex-direction: column; align-items: center;
-  background: var(--raise);
-  box-shadow: inset 0 0 0 0.5px var(--hair), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  transition: background 0.15s, box-shadow 0.15s, transform 0.15s var(--ease);
 }
-.dtile:hover { background: var(--raise-hover); box-shadow: inset 0 0 0 0.5px var(--hair-strong); }
-.dtile:active { transform: scale(0.97); }
-.dtile:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--accent); }
-.dicon { width: 20px; height: 20px; display: grid; place-items: center; color: var(--accent); }
+/* Brand backgrounds, flat — the markup the user already loves. Each tile
+   carries its own ink, mark colour, bar and bar track, so one line of CSS
+   keeps five very different surfaces legible. */
+.dtsq {
+  width: 94px; height: 94px; padding: 0 9px;
+  border-radius: 21px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: var(--tile-bg); color: var(--tile-ink);
+  box-shadow:
+    0 7px 16px rgba(0, 0, 0, 0.36),
+    0 1px 3px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  transition: transform 0.18s var(--ease), box-shadow 0.18s var(--ease);
+}
+.dtile:hover .dtsq {
+  transform: translateY(-2px);
+  box-shadow:
+    0 11px 22px rgba(0, 0, 0, 0.42),
+    0 2px 5px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+}
+.dtile:active .dtsq { transform: translateY(0) scale(0.985); }
+.dtile:focus-visible { outline: none; }
+.dtile:focus-visible .dtsq {
+  box-shadow: 0 0 0 2px var(--bg-solid), 0 0 0 3.5px var(--accent), 0 7px 16px rgba(0, 0, 0, 0.36);
+}
+
+.dtile[data-id="codex"] {
+  --tile-bg: #ffffff; --tile-ink: #2a63e8; --tile-mark: #17181c;
+  --tile-bar: #2a63e8; --tile-track: rgba(42, 99, 232, 0.16);
+}
+.dtile[data-id="claude"] {
+  --tile-bg: #d97757; --tile-ink: #ffffff; --tile-mark: #ffffff;
+  --tile-bar: #ffffff; --tile-track: rgba(255, 255, 255, 0.3);
+}
+.dtile[data-id="grok"] {
+  --tile-bg: #0d0d10; --tile-ink: #ffffff; --tile-mark: #ffffff;
+  --tile-bar: #a78bfa; --tile-track: rgba(255, 255, 255, 0.17);
+}
+.dtile[data-id="grok"] .dtsq { box-shadow: 0 7px 16px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.26), inset 0 0 0 0.5px rgba(255, 255, 255, 0.13); }
+/* The two pale tiles need an edge of their own to sit crisply on a light tray. */
+.dtile[data-id="codex"] .dtsq,
+.dtile[data-id="gemini"] .dtsq {
+  box-shadow: 0 7px 16px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2), inset 0 0 0 0.5px rgba(0, 0, 0, 0.09);
+}
+@media (prefers-color-scheme: light) {
+  .dtsq { box-shadow: 0 6px 14px rgba(18, 18, 30, 0.2), 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.2), inset 0 0 0 0.5px rgba(0, 0, 0, 0.055); }
+  .dtile:hover .dtsq { box-shadow: 0 9px 20px rgba(18, 18, 30, 0.24), 0 2px 4px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 0 0 0.5px rgba(0, 0, 0, 0.055); }
+  .dtile[data-id="grok"] .dtsq { box-shadow: 0 6px 14px rgba(18, 18, 30, 0.26), 0 1px 3px rgba(0, 0, 0, 0.14), inset 0 0 0 0.5px rgba(255, 255, 255, 0.14); }
+  .dtile[data-id="codex"] .dtsq,
+  .dtile[data-id="gemini"] .dtsq { box-shadow: 0 6px 14px rgba(18, 18, 30, 0.16), 0 1px 2px rgba(0, 0, 0, 0.08), inset 0 0 0 0.5px rgba(0, 0, 0, 0.1); }
+}
+.dtile[data-id="gemini"] {
+  --tile-bg: #eff3fd; --tile-ink: #1b2559; --tile-mark: #1b2559;
+  --tile-bar: #3186ff; --tile-track: rgba(27, 37, 89, 0.14);
+}
+.dtile[data-id="copilot"] {
+  --tile-bg: #17252a; --tile-ink: #f2f7f5; --tile-mark: #f2f7f5;
+  --tile-bar: #34d399; --tile-track: rgba(52, 211, 153, 0.22);
+}
+/* A colour picked in Settings paints this tile's number and bar; `--ink` is
+   the contrast-safe version the page works out, so it still reads on white
+   as well as on obsidian. The mark and the surface stay the brand's own. */
+.dtile.custom {
+  --tile-ink: var(--ink); --tile-bar: var(--ink);
+  --tile-track: color-mix(in srgb, var(--ink) 18%, transparent);
+}
+
+.dicon { width: 24px; height: 24px; display: grid; place-items: center; color: var(--tile-mark); margin-bottom: 9px; }
 .dicon i {
-  width: 17px; height: 17px; background: currentColor;
+  width: 22px; height: 22px; background: currentColor;
   -webkit-mask: var(--glyph) center / contain no-repeat;
   mask: var(--glyph) center / contain no-repeat;
 }
-.dtile .dicon img { width: 18px; height: 18px; display: block; }
+.dicon img { width: 23px; height: 23px; display: block; }
 .dtile[data-id="claude"] .dicon i { --glyph: url(icons/claude.svg); }
 .dtile[data-id="codex"] .dicon i { --glyph: url(icons/codex.svg); }
-.dtile[data-id="grok"] .dicon i { --glyph: url(icons/grok.svg); }
-.dtile[data-id="copilot"] .dicon i { --glyph: url(icons/copilot.svg); width: 18px; height: 18px; }
+.dtile[data-id="grok"] .dicon i { --glyph: url(icons/grok.svg); width: 21px; height: 21px; }
+.dtile[data-id="copilot"] .dicon i { --glyph: url(icons/copilot.svg); width: 23px; height: 23px; }
+
+/* One line: the number, the sign, and the one word that says which way it
+   reads. Restrained on purpose — the mark above it is the biggest thing. */
 .dpct {
-  margin-top: 6px; display: flex; align-items: baseline; gap: 1px;
-  font-family: var(--font-num); font-variant-numeric: tabular-nums;
-  color: var(--accent); line-height: 1;
+  display: flex; align-items: baseline; gap: 0;
+  font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap;
 }
-.dpct b { font-size: 21px; font-weight: 650; letter-spacing: -0.035em; }
-.dpct small { font-size: 10px; font-weight: 600; letter-spacing: -0.01em; }
-.dtile.off .dpct b { font-size: 17px; font-weight: 600; }
-.dlabel {
-  margin-top: 3px; font-size: 8.5px; font-weight: 600;
-  letter-spacing: 0.06em; color: var(--text-3); white-space: nowrap;
-}
+.dpct b { font-size: 15px; font-weight: 650; letter-spacing: -0.025em; }
+.dpct em { font-size: 10px; font-weight: 600; font-style: normal; letter-spacing: 0; opacity: 0.86; margin-left: 0.5px; }
+.dpct .dword { font-size: 10.5px; font-weight: 550; letter-spacing: 0.01em; opacity: 0.8; margin-left: 3px; }
 .dbar {
-  margin-top: auto; width: 100%; height: 3px; border-radius: 99px;
-  background: color-mix(in srgb, var(--accent) 17%, transparent); overflow: hidden;
+  margin-top: 11px; width: 56px; height: 3px; border-radius: 99px;
+  background: var(--tile-track); overflow: hidden;
 }
 .dbar > i {
-  display: block; height: 100%; border-radius: inherit; background: var(--accent);
-  transition: width 0.8s var(--ease);
+  display: block; height: 100%; border-radius: inherit; background: var(--tile-bar);
+  transition: width 0.8s var(--ease), background 0.3s;
 }
-.dtile.off { --accent: var(--c-neutral); }
-.dtile.off .dicon { filter: grayscale(0.85); opacity: 0.45; }
-/* Nothing to measure yet: the icon and the word, no dash and no bar. */
-.dtile.off .dpct, .dtile.off .dbar { display: none; }
-.dtile.off .dlabel { margin: auto 0; font-size: 9.5px; color: var(--text-2); }
-.dtile.out .dpct { color: var(--c-danger); }
-.dtile.out .dbar > i { background: var(--c-danger); }
+.dtile.out { --tile-bar: #ff5f57; }
 
-/* The strip under the bar: view switch, Used/Left, the rest on the right.
-   Hovering a tile writes that service's reset time and ETA in the gap. */
-.dock-foot { display: flex; align-items: center; gap: 6px; height: 22px; }
-.dock-foot .seg { padding: 2px; }
-.dock-foot .seg button { font-size: 10px; padding: 2px 7px; border-radius: 5px; }
+/* Not connected: an empty slot in the same place, the brand mark faded, and
+   the one word that says why. The tooltip carries the how. */
+.dtile.off { --tile-bg: #25252b; --tile-ink: var(--text-2); --tile-mark: var(--text-2); }
+@media (prefers-color-scheme: light) { .dtile.off { --tile-bg: #efeff3; } }
+.dtile.off .dtsq, .dtile.off:hover .dtsq { box-shadow: inset 0 0 0 0.5px rgba(127, 127, 137, 0.26); transform: none; }
+.dtile.off .dicon { opacity: 0.42; filter: grayscale(1); }
+.dtile.off .dpct, .dtile.off .dbar { display: none; }
+.dtile.off .doff {
+  margin-top: 8px; font-size: 10px; font-weight: 600;
+  letter-spacing: 0.02em; color: var(--text-3); white-space: nowrap;
+}
+
+/* The name under each squircle, on the tray. */
+.dcap {
+  margin-top: 6px; height: 13px; width: 100%;
+  display: grid; place-items: center;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.01em;
+  color: var(--text-2); white-space: nowrap;
+}
+
+/* The tray's footer: the two switches, the hovered tile's detail in the
+   gap, and three quiet buttons at the right. */
+.dock-foot {
+  position: relative; z-index: 1;
+  display: flex; align-items: center; gap: 5px;
+  height: 22px; margin: 4px 12px 0; padding: 0 2px;
+}
+.dock-foot::before {
+  content: ""; position: absolute; left: -4px; right: -4px; top: -3px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--hair) 10%, var(--hair) 90%, transparent);
+}
+.dock-foot .seg { padding: 1.5px; background: rgba(255, 255, 255, 0.045); box-shadow: none; }
+@media (prefers-color-scheme: light) { .dock-foot .seg { background: rgba(0, 0, 0, 0.04); } }
+.dock-foot .seg button { font-size: 10px; font-weight: 550; padding: 2px 7px; border-radius: 5px; color: var(--text-3); }
+.dock-foot .seg button.on { background: rgba(255, 255, 255, 0.1); color: var(--text); box-shadow: inset 0 0 0 0.5px var(--hair-strong); }
+@media (prefers-color-scheme: light) { .dock-foot .seg button.on { background: #fff; } }
 .dock-detail {
-  flex: 1; min-width: 0; padding: 0 6px 0 4px;
+  flex: 1; min-width: 0; padding: 0 6px 0 5px;
   font-size: 10px; color: var(--text-3); white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
   opacity: 0; transition: opacity 0.15s;
 }
 .dock-detail.on { opacity: 1; }
+.dock-detail .dock-sep { margin: 0 5px; opacity: 0.65; }
 .dock-actions { display: flex; gap: 1px; margin-left: auto; }
 .dock-btn {
-  width: 22px; height: 22px; border-radius: 7px; flex: none;
+  width: 20px; height: 20px; border-radius: 6px; flex: none;
   display: grid; place-items: center; color: var(--text-2);
   transition: background 0.15s, color 0.15s;
 }
@@ -388,6 +506,18 @@ html:not(.vibrancy):not(.preview) .panel { background: var(--bg-solid); }
 .dock-btn:hover { background: var(--raise-hover); color: var(--text); }
 .dock-btn.on { background: var(--raise-hover); color: var(--text); }
 .dock-btn.spinning svg { animation: spin 0.9s linear infinite; }
+
+/* In Dock view the window *is* the bar: no card behind it, the tray carries
+   its own glass. The 12 px of transparent air on each side and 13 px under it
+   are there for the tray's shadow — a window clips anything painted outside
+   its own bounds, and a dock without a soft shadow sits flat on the desktop. */
+.panel[data-view="dock"]:not(.settings-open) {
+  background: transparent; border-radius: 0; box-shadow: none; overflow: visible;
+  padding: 4px 12px 13px;
+}
+html .panel[data-view="dock"]:not(.settings-open) {
+  background: transparent; box-shadow: none; max-height: none;
+}
 
 /* ----------------------------------------------------------- settings */
 .view-settings { padding: 2px 12px 8px; }
