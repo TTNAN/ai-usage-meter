@@ -1,7 +1,7 @@
-//! AI Usage Meter — a menu-bar (macOS) / system-tray (Windows) app that shows
-//! how much Claude, ChatGPT (Codex), Grok, Gemini and GitHub Copilot quota you
-//! have left. One window, two shapes: the rings popover (372 px, every window
-//! and countdown in a row) and the dock panel (five brand squircles on one
+//! AI Usage Meter — a menu-bar (macOS) / system-tray (Windows, Linux) app that
+//! shows how much Claude, ChatGPT (Codex), Grok, Gemini and GitHub Copilot
+//! quota you have left. One window, two shapes: the rings popover (372 px, every
+//! window and countdown in a row) and the dock panel (five brand squircles on one
 //! tray, as wide as its tiles), switched in the UI and sized from there.
 //!
 //! * `ai-usage-core` talks to each service (read-only, reusing CLI logins),
@@ -33,6 +33,20 @@ use tauri_plugin_notification::NotificationExt;
 const TICK: Duration = Duration::from_secs(30);
 /// ⌘⇧U on macOS, Ctrl+Shift+U elsewhere. The UI can switch or turn it off.
 const DEFAULT_SHORTCUT: &str = "CommandOrControl+Shift+U";
+
+/// Linux on Wayland: the compositor places windows itself (an app may not
+/// move its own) and hands out no global shortcut the way X11 does. Everything
+/// that slides or tucks the window, and the shortcut's error message, asks
+/// this first; on macOS and Windows it is always false.
+fn on_wayland() -> bool {
+    cfg!(target_os = "linux")
+        && (std::env::var("XDG_SESSION_TYPE")
+            .map(|v| v.eq_ignore_ascii_case("wayland"))
+            .unwrap_or(false)
+            || std::env::var_os("WAYLAND_DISPLAY")
+                .map(|v| !v.is_empty())
+                .unwrap_or(false))
+}
 
 /// Minimum seconds between automatic fetches, per provider.
 /// Claude's usage endpoint rate-limits aggressively, so it gets the most room.
@@ -99,6 +113,7 @@ struct AppState {
     applied_w: AtomicI64,
     applied_h: AtomicI64,
     /// Accent colours picked in Settings, for the Windows / Linux tray bars.
+    /// (macOS tints its own template image instead.)
     custom_colors: Mutex<tray_icon::CustomColors>,
     /// Which screen edge the window is tucked against (`None` = a plain tray
     /// popover that just hides on blur).
@@ -515,9 +530,12 @@ fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window("main")
 }
 
-/// Place the popover under the menu-bar icon (macOS) or above the tray
-/// icon (Windows taskbar), clamped to the screen it is on. A docked window is
-/// left at its edge instead.
+/// Place the popover under the menu-bar icon (macOS) or above the tray icon
+/// (Windows taskbar), clamped to the screen it is on. A Linux tray reports no
+/// icon rectangle, so there it opens at the top-right instead — the corner
+/// every common panel sits in. A docked window is left at its edge instead.
+///
+/// Wayland ignores everything here: the compositor places the window itself.
 fn position_window(app: &AppHandle, window: &WebviewWindow) {
     let Ok(size) = window.outer_size() else {
         return;
@@ -574,9 +592,11 @@ fn position_window(app: &AppHandle, window: &WebviewWindow) {
             };
             (x, y)
         }
-        // Opened from the menu, before any click: top-right on macOS,
-        // bottom-right everywhere else.
-        None if cfg!(target_os = "macos") => (mx + mw - w - margin, my + 32.0 * scale),
+        // Opened from the menu, before any click: top-right on macOS and on
+        // Linux (whose panels usually sit at the top), bottom-right on Windows.
+        None if cfg!(any(target_os = "macos", target_os = "linux")) => {
+            (mx + mw - w - margin, my + 32.0 * scale)
+        }
         None => (mx + mw - w - margin, my + mh - h - 56.0 * scale),
     };
     let x = x.clamp(mx + margin, (mx + mw - w - margin).max(mx + margin));
@@ -652,6 +672,12 @@ fn apply_shortcut(app: &AppHandle, keys: &str) -> Result<(), String> {
     let keys = keys.trim();
     if keys.is_empty() || keys.eq_ignore_ascii_case("off") {
         return Ok(());
+    }
+    // Wayland gives a key combination to no app it is not focused on. The X11
+    // plugin would still report success, and the key would do nothing — so say
+    // no, and let the UI explain.
+    if on_wayland() {
+        return Err("Wayland does not allow a global shortcut".into());
     }
     manager
         .on_shortcut(keys, |app, _shortcut, event| {
@@ -834,9 +860,13 @@ fn set_custom_colors(app: AppHandle, colors: HashMap<String, String>) {
 
 /// The "Tuck at screen edge" switch. Turning it off brings a tucked window
 /// back out before it stops applying.
+///
+/// Wayland keeps the switch off whatever the UI asks: the compositor decides
+/// where a window sits, so sliding it off the edge could never work there.
 #[tauri::command]
 fn set_edge_enabled(app: AppHandle, enabled: bool) {
     let state: State<AppState> = app.state();
+    let enabled = enabled && !on_wayland();
     state.edge_enabled.store(enabled, Ordering::Relaxed);
     if !enabled && state.edge_hidden.swap(false, Ordering::Relaxed) {
         slide_window(&app, false);
@@ -939,6 +969,8 @@ fn app_info() -> serde_json::Value {
         "version": env!("CARGO_PKG_VERSION"),
         "mock": mock_mode(),
         "platform": std::env::consts::OS,
+        // Linux only, and only where it changes what the UI may offer.
+        "wayland": on_wayland(),
     })
 }
 
@@ -950,7 +982,15 @@ fn open_url(url: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let r = std::process::Command::new("open").arg(&url).spawn();
     #[cfg(target_os = "windows")]
-    let r = std::process::Command::new("explorer").arg(&url).spawn();
+    let r = {
+        // A GUI process has no console for the child to join, so Windows would
+        // make it one: CREATE_NO_WINDOW keeps the browser's launch invisible.
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("explorer")
+            .arg(&url)
+            .creation_flags(0x0800_0000)
+            .spawn()
+    };
     #[cfg(all(unix, not(target_os = "macos")))]
     let r = std::process::Command::new("xdg-open").arg(&url).spawn();
     r.map(|_| ()).map_err(|e| e.to_string())
@@ -983,7 +1023,7 @@ fn quit(app: AppHandle) {
 fn main() {
     // --smoke-test: no window, no tray. Fetch status (mock when
     // AI_USAGE_METER_MOCK=1, otherwise real discovery), print JSON, exit 0.
-    // CI runs this on real macOS / Windows runners.
+    // CI runs this on real macOS, Windows and Linux runners.
     if std::env::args().any(|a| a == "--smoke-test") {
         let status = providers::fetch_all(mock_mode());
         match serde_json::to_string_pretty(&status) {
@@ -1041,6 +1081,9 @@ fn main() {
                 .tooltip("AI Usage Meter")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
+                // macOS and Windows hand the icon's own clicks back; Linux
+                // (libappindicator) does not — there a click opens this menu,
+                // which is why every action is in it as well.
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "show" => show_window(app),
                     "refresh" => {

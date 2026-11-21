@@ -4,7 +4,7 @@
 
 # AI Usage Meter
 
-**Claude、ChatGPT（Codex）、Grok、Gemini、GitHub Copilot 的订阅额度，常驻菜单栏，一眼看清。**
+**Claude、ChatGPT（Codex）、Grok、Gemini、GitHub Copilot 的订阅额度，常驻菜单栏 / 系统托盘，一眼看清。**
 
 同一个应用，两种形态：**环图弹窗**看全局，**Dock 面板**把五家的数字和重置时间一次摊在眼前——随时切换，设置和配色两边通用。
 
@@ -12,7 +12,7 @@
 
 [![Build](https://github.com/TTNAN/ai-usage-meter/actions/workflows/build.yml/badge.svg)](https://github.com/TTNAN/ai-usage-meter/actions/workflows/build.yml)
 [![Release](https://img.shields.io/github/v/release/TTNAN/ai-usage-meter?include_prereleases&color=6e9bff)](https://github.com/TTNAN/ai-usage-meter/releases/latest)
-![Platforms](https://img.shields.io/badge/macOS%20%7C%20Windows-111?logo=tauri&logoColor=white)
+![Platforms](https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-111?logo=tauri&logoColor=white)
 [![License](https://img.shields.io/badge/license-MIT-b38cff)](./LICENSE)
 
 <picture>
@@ -27,7 +27,7 @@
 
 </div>
 
-写代码写到一半被「额度用完」打断？AI Usage Meter 把五家的 5 小时窗口、周额度、模型额度和重置倒计时放进菜单栏，**不用打开网页、不用粘贴 Cookie、不经过任何服务器**。
+写代码写到一半被「额度用完」打断？AI Usage Meter 把五家的 5 小时窗口、周额度、模型额度和重置倒计时放进菜单栏或系统托盘，**不用打开网页、不用粘贴 Cookie、不经过任何服务器**。
 
 ## 亮点
 
@@ -41,9 +41,9 @@
 - **订阅档位** — 自动识别 Max、Pro、Plus、SuperGrok、Ultra、Individual 等档位。
 - **零配置** — 直接复用 ChatGPT 桌面版（Codex）、Claude Code、Grok Build、Gemini CLI / Antigravity、GitHub CLI / Copilot CLI 已有的登录；只用 Claude / Grok 网页版或 App？在设置里登录一次账号就行。Gemini 的访问令牌一小时就过期，应用会拿 refresh token 自己续上并写回 `~/.gemini/oauth_creds.json`，不用再跑一次 `gemini`。
 - **实时跟着变** — 后台每 1 到 5 分钟自动重读，你在网页、App、命令行哪里用掉的额度都会同步显示。
-- **原生质感** — macOS 原生毛玻璃弹窗、跟随系统深浅色、点击图标弹出、失焦自动收起；Windows 上从托盘弹出。
-- **拖到哪就在哪，可贴边** — 按住标题栏或空白处可以拖到屏幕任意位置；拖到左／右边缘松手就吸附上去，失焦时平滑滑出屏幕，只留一条 12px 的小把手，点它（或点菜单栏图标）再滑回来。设置里的「贴边自动收起」可以关掉。
-- **自定义服务配色** — 「设置 → 服务配色」一行一个服务：点色块用系统取色器自选，或点旁边的预设色，同心环、进度条和强调色立刻跟着变；Windows 的托盘小条也会用同一套颜色。点 ↺ 或「全部恢复」回到各服务原本的配色。Dock 视图里点「配色」打开的是同一份配色条（[展开的样子](docs/dock-colors.png)）。
+- **原生质感** — macOS 原生毛玻璃弹窗、跟随系统深浅色、点击图标弹出、失焦自动收起；Windows 上从托盘弹出，Linux（X11）上从托盘菜单打开。
+- **拖到哪就在哪，可贴边** — 按住标题栏或空白处可以拖到屏幕任意位置；拖到左／右边缘松手就吸附上去，失焦时平滑滑出屏幕，只留一条 12px 的小把手，点它（或点菜单栏图标）再滑回来。设置里的「贴边自动收起」可以关掉。（Wayland 会话不让应用自己摆放窗口，那里的贴边开关会置灰并标明原因。）
+- **自定义服务配色** — 「设置 → 服务配色」一行一个服务：点色块用系统取色器自选，或点旁边的预设色，同心环、进度条和强调色立刻跟着变；Windows 和 Linux 的托盘小条也会用同一套颜色。点 ↺ 或「全部恢复」回到各服务原本的配色。Dock 视图里点「配色」打开的是同一份配色条（[展开的样子](docs/dock-colors.png)）。
 - **中英双语** — 跟随系统语言，也可在设置里切换。
 - **安静可靠** — 后台低频轮询、手动刷新有限速；单次请求失败会保留上次读数并标注，绝不编造数字。
 - **轻** — Tauri v2 + 原生 HTML/CSS/JS，没有 Node 依赖，没有前端打包器。
@@ -52,12 +52,13 @@
 
 ## 安装
 
-从 [Releases](https://github.com/TTNAN/ai-usage-meter/releases/latest) 下载最新版 —— 当前 [v0.7.0](https://github.com/TTNAN/ai-usage-meter/releases/tag/v0.7.0)，macOS `.dmg`、Windows `.exe` 与 `.msi` 都在里面：
+从 [Releases](https://github.com/TTNAN/ai-usage-meter/releases/latest) 下载最新版 —— 当前 [v0.7.0](https://github.com/TTNAN/ai-usage-meter/releases/tag/v0.7.0)，macOS `.dmg`、Windows `.exe` 与 `.msi`、Linux `.deb` 与 `.AppImage` 都在里面：
 
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
 | macOS（Apple 芯片 + Intel） | `.dmg` | 拖进「应用程序」。尚未公证，首次打开请右键 → 打开，或运行下方命令 |
 | Windows 10 / 11 | `.exe` 或 `.msi` | 双击安装，无需管理员权限 |
+| Linux x64（Ubuntu / Debian 系） | `.deb` 或 `.AppImage` | 需要 `libwebkit2gtk-4.1`，以及显示托盘的 AppIndicator 扩展（Ubuntu 自带；原版 GNOME 需装 AppIndicator 扩展） |
 
 ```bash
 xattr -cr "/Applications/AI Usage Meter.app"
@@ -65,6 +66,8 @@ xattr -cr "/Applications/AI Usage Meter.app"
 
 > [!TIP]
 > 应用尚未公证，所以首次打开被 macOS 拦下时，右键 → 打开，或者运行上面这行命令即可；之后就能正常双击启动了。
+>
+> Linux：`.deb` 用 `sudo apt install ./ai-usage-meter_0.7.0_amd64.deb` 安装；`.AppImage` 加 `chmod +x` 后直接运行（AppImage 需要 FUSE，或用 `--appimage-extract-and-run`）。Wayland 会话下没有全局快捷键，也不能贴边——这是 Wayland 的限制，应用会在设置里说明。
 
 然后登录你在用的工具（用哪个登哪个，没登录的会显示「未连接」）：
 
@@ -84,7 +87,7 @@ xattr -cr "/Applications/AI Usage Meter.app"
 
 | 按键 | 作用 |
 | --- | --- |
-| `⌘⇧U` / `Ctrl+Shift+U` | 全局快捷键：在任何应用里唤出或收起弹窗（设置里可换 `⌘⇧A` 或关掉） |
+| `⌘⇧U` / `Ctrl+Shift+U` | 全局快捷键：在任何应用里唤出或收起弹窗（设置里可换 `⌘⇧A` 或关掉；Wayland 会话不支持全局快捷键，会说明并保持关闭） |
 | `⌘R` / `Ctrl R` | 刷新 |
 | `⌘,` | 打开设置 |
 | `Esc` | 收起弹窗（贴边时收回屏幕边缘） |
@@ -136,8 +139,10 @@ python3 -m http.server -d src 8000
 # http://localhost:8000/?state=trend      环图视图，重点看迷你走势与预计用完
 # http://localhost:8000/?state=empty       首次启动
 # http://localhost:8000/?state=mixed       混合状态（未连接 / 登录过期）
+# http://localhost:8000/?state=down        两家连不上（超时 / HTTP 502）
 # http://localhost:8000/?state=four        只连四家（四环总览）
 # http://localhost:8000/?view=settings     设置页（含服务配色与全局快捷键）
+# 加 &wayland=1 可预览 Wayland 下置灰的贴边开关
 # 加 &lang=zh 或 &lang=en 可强制界面语言
 ```
 
@@ -148,6 +153,14 @@ cargo install tauri-cli --version "^2"
 cargo tauri dev                    # 开发
 cargo tauri build                  # 打包
 AI_USAGE_METER_MOCK=1 cargo tauri dev   # 用演示数据运行
+```
+
+Linux 上打包前先装系统依赖（Ubuntu / Debian 系）：
+
+```bash
+sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
+  libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+cargo tauri build --bundles deb,appimage   # Linux 只出这两种（rpm 需要 rpmbuild）
 ```
 
 后端分成两部分：应用自己的 `src-tauri/src/`（托盘、窗口、命令、轮询、网页登录），和不依赖 Tauri 的核心库 `src-tauri/crates/ai-usage-core/`（五家 provider、低额度提醒规则、托盘图标、贴边吸附）。两个视图共用同一套后端；窗口尺寸也由页面量好上报（`set_window_size`），所以环图和 Dock 条能共用一个原生窗口。
@@ -166,8 +179,8 @@ cd src-tauri && cargo test                        # 应用层（需要 Tauri 的
 - [x] 用量走势迷你折线与「预计多久用完」
 - [x] 全局快捷键（`⌘⇧U` / `Ctrl+Shift+U`）
 - [x] 把 Dock 版并进同一个应用：环图 / Dock 双形态（0.7.0）
+- [x] Linux 托盘：`.deb` 与 `.AppImage`
 - [ ] 更多服务：Cursor、Windsurf
-- [ ] Linux 托盘
 - [ ] macOS 签名与公证
 
 ## 致谢
