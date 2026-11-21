@@ -5,6 +5,8 @@
 //! monitor, hands the numbers over, and acts on the answer — so the snapping
 //! rules and the animation curve are unit-tested on their own (`cargo test`).
 
+use std::sync::atomic::{AtomicI64, Ordering};
+
 /// How close (in logical px) to a screen edge a dropped window has to land to
 /// snap against it.
 pub const SNAP_ZONE: f64 = 24.0;
@@ -96,6 +98,70 @@ pub fn hidden_x(dock: Dock, w: f64, mx: f64, mw: f64, scale: f64) -> f64 {
     match dock {
         Dock::Right => mx + mw - handle,
         _ => mx - w + handle,
+    }
+}
+
+/// Where the app's own `set_position` is putting the window, so the `Moved`
+/// event that call causes is not mistaken for the user dragging the window.
+///
+/// Deliberately lock-free. The `Moved` handler runs on the UI thread, and a
+/// `Mutex` on that path is one re-entrant lock away from a window that is
+/// there but never answers again ("Not Responding" on Windows): the thread
+/// that moves the window is often the same one that receives the event.
+/// Atomic loads and stores cannot block, so a handler that runs while a slide
+/// is already moving the window reads whichever frame the note is on and
+/// carries on.
+#[derive(Debug)]
+pub struct MoveNote {
+    x: AtomicI64,
+    y: AtomicI64,
+}
+
+impl MoveNote {
+    /// "Nothing of ours is expected": the coordinates are whole physical px, so
+    /// this value can never be a real position.
+    const NONE: i64 = i64::MIN;
+
+    pub fn new() -> Self {
+        Self {
+            x: AtomicI64::new(Self::NONE),
+            y: AtomicI64::new(Self::NONE),
+        }
+    }
+
+    /// Announce a move we are about to make. `x` and `y` are physical px, as
+    /// handed to `set_position` (anything fractional is rounded here).
+    pub fn note(&self, x: f64, y: f64) {
+        self.y.store(y.round() as i64, Ordering::Relaxed);
+        self.x.store(x.round() as i64, Ordering::Relaxed);
+    }
+
+    /// Is this `Moved` position the one we announced? A match consumes the
+    /// note, so one announcement covers exactly one event; a miss leaves the
+    /// note standing (frames of one slide arrive out of step with the notes).
+    pub fn claim(&self, x: f64, y: f64) -> bool {
+        let ex = self.x.load(Ordering::Relaxed);
+        if ex == Self::NONE {
+            return false;
+        }
+        let ey = self.y.load(Ordering::Relaxed);
+        if (x - ex as f64).abs() <= 1.0 && (y - ey as f64).abs() <= 1.0 {
+            self.x.store(Self::NONE, Ordering::Relaxed);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Forget any announcement, e.g. when a drag of the user's own starts.
+    pub fn clear(&self) {
+        self.x.store(Self::NONE, Ordering::Relaxed);
+    }
+}
+
+impl Default for MoveNote {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -208,6 +274,57 @@ mod tests {
             assert!(v >= prev, "monotone at {i}");
             prev = v;
         }
+    }
+
+    #[test]
+    fn a_noted_move_is_claimed_exactly_once() {
+        let note = MoveNote::new();
+        assert!(!note.claim(10.0, 20.0), "nothing noted yet");
+        note.note(10.4, 20.4);
+        assert!(note.claim(10.0, 20.0), "the rounded target, within a pixel");
+        assert!(!note.claim(10.0, 20.0), "the note is spent");
+        // A note for one frame does not swallow the next frame's event.
+        note.note(400.0, 300.0);
+        assert!(!note.claim(512.0, 300.0), "a different place is not ours");
+        assert!(
+            note.claim(400.0, 300.0),
+            "a miss leaves the note standing for the frame still in flight"
+        );
+        note.note(1.0, 2.0);
+        note.clear();
+        assert!(!note.claim(1.0, 2.0));
+    }
+
+    /// The regression this type exists for: the UI thread used to take a
+    /// `Mutex` here and lock it a second time, which froze the window. Claiming
+    /// and noting from two threads must both finish. A lock that blocks would
+    /// hang this test instead of failing it, so the timeout is what is asserted.
+    #[test]
+    fn noting_and_claiming_from_two_threads_never_blocks() {
+        use std::sync::mpsc;
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        let note = Arc::new(MoveNote::new());
+        let (tx, rx) = mpsc::channel();
+        let other = note.clone();
+        std::thread::spawn(move || {
+            for i in 0..20_000 {
+                let (x, y) = (100.0 + (i % 7) as f64, 200.0);
+                other.note(x, y);
+                let _ = other.claim(x, y);
+            }
+            let _ = tx.send(());
+        });
+        for i in 0..20_000 {
+            let (x, y) = (400.0, 300.0 - (i % 5) as f64);
+            note.note(x, y);
+            let _ = note.claim(x, y);
+        }
+        assert!(
+            rx.recv_timeout(Duration::from_secs(10)).is_ok(),
+            "a note or a claim blocked the other thread"
+        );
     }
 
     #[test]

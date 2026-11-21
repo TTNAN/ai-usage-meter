@@ -85,8 +85,16 @@ struct AppState {
     notify_lang: Mutex<String>,
     /// What has already been announced, so one reset window is announced once.
     alerts: Mutex<notify::Alerts>,
-    /// When the popover last hid because it lost focus.
+    /// When the popover lost focus. Set on the way out, so a tray click that
+    /// arrives just after it can tell that the popover is on its way down.
     blur_hidden_at: AtomicI64,
+    /// When the popover last became visible, so the hide a blur schedules does
+    /// nothing if a tray click has reopened the window in the meantime.
+    shown_at: AtomicI64,
+    /// The height last handed to `set_size`, in thousandths of a logical px:
+    /// the page measures itself again after every resize and reports the new
+    /// height back, and without this the two keep answering each other.
+    applied_height: AtomicI64,
     /// Accent colours picked in Settings, for the Windows / Linux tray bars.
     custom_colors: Mutex<tray_icon::CustomColors>,
     /// Which screen edge the window is tucked against (`None` = a plain tray
@@ -103,9 +111,11 @@ struct AppState {
     move_seq: AtomicI64,
     /// The `move_seq` value already settled, so each drag is judged once.
     move_settled: AtomicI64,
-    /// Where our own `set_position` is putting the window, so the `Moved` event
-    /// it causes is not mistaken for a drag.
-    expected_pos: Mutex<Option<(f64, f64)>>,
+    /// Where our own `set_position` is putting the window, so the `Moved`
+    /// event it causes is not mistaken for a drag. Deliberately lock-free: the
+    /// `Moved` handler runs on the UI thread, and a `Mutex` on that path is one
+    /// re-entrant lock away from a window that never answers again.
+    move_note: edge::MoveNote,
     /// The global shortcut currently held, or `None` when it is switched off.
     shortcut: Mutex<Option<String>>,
 }
@@ -396,7 +406,7 @@ fn geometry(window: &WebviewWindow) -> Option<Geometry> {
 /// not read as a drag.
 fn place(window: &WebviewWindow, state: &AppState, x: f64, y: f64) {
     let (x, y) = (x.round(), y.round());
-    *state.expected_pos.lock().unwrap() = Some((x, y));
+    state.move_note.note(x, y);
     let _ = window.set_position(PhysicalPosition::new(x as i32, y as i32));
 }
 
@@ -581,6 +591,7 @@ fn show_window(app: &AppHandle) {
         state.edge_hidden.load(Ordering::Relaxed) && state.edge_dock.lock().unwrap().is_docked();
     if tucked {
         let _ = window.show();
+        state.shown_at.store(now_ms(), Ordering::Relaxed);
         let _ = window.set_focus();
         let _ = app.emit("popover-shown", ());
         slide_window(app, false);
@@ -588,6 +599,7 @@ fn show_window(app: &AppHandle) {
     }
     position_window(app, &window);
     let _ = window.show();
+    state.shown_at.store(now_ms(), Ordering::Relaxed);
     let _ = window.set_focus();
     let _ = app.emit("popover-shown", ());
 }
@@ -734,6 +746,16 @@ fn set_height(app: AppHandle, height: f64) {
         return;
     };
     let height = height.clamp(160.0, 900.0);
+    let state: State<AppState> = app.state();
+    // Only resize when the height really changed. The page measures itself
+    // again after every resize and reports the result back, so a rounding
+    // difference of one pixel would otherwise have the two answering each
+    // other for as long as the window is open — and this command runs on the
+    // UI thread, where that is exactly what "Not Responding" looks like.
+    let wanted = (height * 1000.0).round() as i64;
+    if state.applied_height.swap(wanted, Ordering::Relaxed) == wanted {
+        return;
+    }
     let _ = window.set_size(LogicalSize::new(WINDOW_WIDTH, height));
     if window.is_visible().unwrap_or(false) {
         position_window(&app, &window);
@@ -1015,14 +1037,16 @@ fn main() {
                     // A user drag bumps the sequence; the watcher below turns
                     // "nothing moved for 180 ms" into a settled drag. Moves we
                     // caused ourselves are recognised and ignored.
+                    //
+                    // Nothing in here may block. This runs on the UI thread,
+                    // so a lock it has to wait for — or takes twice — is a
+                    // window that is drawn but never answers again.
                     WindowEvent::Moved(pos) => {
                         let state: State<AppState> = handle.state();
                         let (x, y) = (pos.x as f64, pos.y as f64);
-                        if let Some((ex, ey)) = *state.expected_pos.lock().unwrap() {
-                            if (x - ex).abs() <= 1.0 && (y - ey).abs() <= 1.0 {
-                                *state.expected_pos.lock().unwrap() = None;
-                                return;
-                            }
+                        // Our own `set_position` announced this one.
+                        if state.move_note.claim(x, y) {
+                            return;
                         }
                         if state.edge_anim.load(Ordering::Relaxed) {
                             return;
@@ -1030,25 +1054,45 @@ fn main() {
                         state.move_seq.fetch_add(1, Ordering::Relaxed);
                     }
                     WindowEvent::Focused(false) => {
-                        if !cfg!(debug_assertions) {
-                            let Some(w) = main_window(&handle) else {
-                                return;
-                            };
-                            if !w.is_visible().unwrap_or(false) {
+                        if cfg!(debug_assertions) {
+                            return;
+                        }
+                        let Some(w) = main_window(&handle) else {
+                            return;
+                        };
+                        if !w.is_visible().unwrap_or(false) {
+                            return;
+                        }
+                        // Hiding a window from inside its own focus-loss event
+                        // re-enters the message loop of the webview the focus
+                        // is leaving, which Windows does not survive; do it a
+                        // moment later, once that event is behind us.
+                        let app = handle.clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(Duration::from_millis(30));
+                            let state: State<AppState> = app.state();
+                            // A tray click has overtaken us and put the popover
+                            // back up: leave it alone.
+                            if now_ms() - state.shown_at.load(Ordering::Relaxed) < 300 {
                                 return;
                             }
-                            let state: State<AppState> = handle.state();
+                            let Some(w) = main_window(&app) else {
+                                return;
+                            };
+                            if !w.is_visible().unwrap_or(false) || w.is_focused().unwrap_or(false) {
+                                return;
+                            }
                             // Tucked against an edge: slide away instead of
                             // disappearing, leaving the grab handle.
                             let tucks = state.edge_enabled.load(Ordering::Relaxed)
                                 && state.edge_dock.lock().unwrap().is_docked();
                             if tucks {
-                                slide_window(&handle, true);
+                                slide_window(&app, true);
                             } else {
-                                let _ = w.hide();
                                 state.blur_hidden_at.store(now_ms(), Ordering::Relaxed);
+                                let _ = w.hide();
                             }
-                        }
+                        });
                     }
                     _ => {}
                 });

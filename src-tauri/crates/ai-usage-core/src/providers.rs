@@ -2626,7 +2626,9 @@ mod tests {
                 "{}-{}.apps.googleusercontent.com",
                 123456789012u64, "abcdefghijklmnopqrstuvwxyz012345"
             ),
-            format!("{}-{}", "GOCS", "PX-abcdefghijklmnopqrstuvwx12"),
+            // Spelled in two pieces for the same reason as the id above: the
+            // scanner looks for the whole `GOCSPX-…` prefix on one line.
+            format!("{}{}", "GOCS", "PX-abcdefghijklmnopqrstuvwx12"),
         )
     }
 
