@@ -58,6 +58,9 @@ const CLI = {
 const LABEL = { claude: "Claude", codex: "ChatGPT", grok: "Grok", gemini: "Gemini", copilot: "Copilot" };
 const WEB_IDS = ["claude", "grok"];
 let webLogins = [];
+/** Linux only: a Wayland session places windows itself (an app cannot move its
+ *  own), and allows no global shortcut. The controls that need either say so. */
+let WAYLAND = false;
 
 const TAURI = window.__TAURI__ && window.__TAURI__.core ? window.__TAURI__ : null;
 const PREVIEW = !TAURI;
@@ -85,6 +88,7 @@ const STRINGS = {
     dockReset: (d) => `resets in ${d}`,
     notConnectedShort: "Not connected",
     expiredShort: "Expired",
+    offlineShort: "Offline",
     refresh: "Refresh (⌘R)",
     settings: "Settings",
     showAs: "Show numbers as",
@@ -169,6 +173,17 @@ const STRINGS = {
       return `Login expired. Run \`${CLI[id]}\` once to refresh it.`;
     },
     unavailable: (name) => `Couldn't reach ${name}. Retrying shortly.`,
+    unavailableWhy: (name, why) => `Couldn't reach ${name} (${why}) — retrying shortly.`,
+    // The short reason a failed fetch puts in `note`, said in this language;
+    // anything else (an `HTTP 502`, say) is already readable as it is.
+    reason: {
+      "timed out": "timed out",
+      "offline or blocked": "offline or blocked",
+      "network error": "network error",
+      "unexpected response": "unexpected response",
+    },
+    scWayland: "Wayland doesn't let an app take a global shortcut. Sign in to an X11 session, or leave it off.",
+    edgeWayland: "Wayland moves windows itself, so tucking at an edge is off here.",
     stale: "last reading",
     justNow: "just now",
     ago: (t) => `${t} ago`,
@@ -193,6 +208,7 @@ const STRINGS = {
     dockReset: (d) => `${d} 后重置`,
     notConnectedShort: "未连接",
     expiredShort: "已过期",
+    offlineShort: "连不上",
     refresh: "刷新 (⌘R)",
     settings: "设置",
     showAs: "数字显示为",
@@ -276,6 +292,15 @@ const STRINGS = {
       return `登录已过期。运行一次 \`${CLI[id]}\` 刷新登录。`;
     },
     unavailable: (name) => `暂时连不上 ${name}，稍后自动重试。`,
+    unavailableWhy: (name, why) => `暂时连不上 ${name}（${why}），稍后自动重试。`,
+    reason: {
+      "timed out": "超时",
+      "offline or blocked": "离线或被拦截",
+      "network error": "网络错误",
+      "unexpected response": "返回格式异常",
+    },
+    scWayland: "Wayland 不允许应用占用全局快捷键，可以换到 X11 会话，或保持关闭。",
+    edgeWayland: "Wayland 由系统自己摆放窗口，贴边收起在这里不可用。",
     stale: "上次读数",
     justNow: "刚刚更新",
     ago: (t) => `${t}前`,
@@ -292,6 +317,11 @@ function normalizeShortcut(v) {
   if (v === null) return SHORTCUTS[0];
   return SHORTCUTS.includes(v) ? v : "";
 }
+/** The chord the switches come back to: never empty, so turning the shortcut
+ *  on again restores what was chosen instead of the first preset. */
+function normalizeLastShortcut(v) {
+  return SHORTCUTS.includes(v) ? v : SHORTCUTS[0];
+}
 
 const settings = {
   // Which shape the window takes: the rings popover, or the dock panel.
@@ -307,7 +337,11 @@ const settings = {
   edgeTuck: localStorage.getItem("edge-hide") !== "0",
   // The global shortcut: an accelerator string, or "" for off.
   shortcut: normalizeShortcut(localStorage.getItem("shortcut")),
+  // The chord to turn back on after Off, so the choice isn't forgotten.
+  lastShortcut: normalizeLastShortcut(localStorage.getItem("last-shortcut")),
 };
+// A shortcut that survived a restart is the one to come back to as well.
+if (settings.shortcut) rememberShortcut(settings.shortcut);
 function lang() {
   if (settings.lang !== "auto") return settings.lang;
   return (navigator.language || "en").toLowerCase().startsWith("zh") ? "zh" : "en";
@@ -504,6 +538,15 @@ function demoStatus(kind) {
         : { id: "copilot", label: "Copilot", state: "mock", plan: "Individual", fetchedAt: now,
             windows: [w("premium", 61, 11 * 86400, 0), w("chat", 23, 11 * 86400, 0)] },
   ];
+  if (kind === "down") {
+    // Two providers that could not be reached, with the kind of reason the
+    // real ones put in `note`: the row should say which one it was.
+    const down = (id, note) => ({
+      id, label: LABEL[id], state: "unavailable", plan: null, windows: [], fetchedAt: now, note,
+    });
+    all[1] = down("codex", "Couldn't reach ChatGPT (timed out).");
+    all[3] = down("gemini", "Couldn't reach Gemini (HTTP 502).");
+  }
   return all;
 }
 
@@ -775,6 +818,23 @@ function dockReset(resetsAt) {
   return left <= 0 ? t("resetsNow") : t("dockReset")(fmtTimer(left));
 }
 
+/** The short reason a failed fetch puts in its note — the bit in brackets in
+ *  `Couldn't reach ChatGPT (timed out).` — said in this language. A reason the
+ *  table doesn't know (`HTTP 502`) already reads fine as it is. */
+function noteReason(note) {
+  const m = /\(([^()]+)\)/.exec(note || "");
+  if (!m) return "";
+  const raw = m[1].trim();
+  return t("reason")[raw.toLowerCase()] || raw;
+}
+
+/** An unreachable service's line, with the provider's reason when it gave one:
+ *  a timeout then reads differently from an HTTP error. */
+function unavailableMsg(s) {
+  const why = noteReason(s.note);
+  return why ? t("unavailableWhy")(s.label, why) : t("unavailable")(s.label);
+}
+
 function serviceRow(s) {
   const live = hasNumbers(s);
   const used = live ? peakUsed(s) : null;
@@ -809,7 +869,7 @@ function serviceRow(s) {
     const msg =
       s.state === "expired" && s.source === "web" ? t("webExpired")
       : s.state === "expired" ? t("expired")(s.id)
-      : s.state === "unavailable" ? t("unavailable")(s.label)
+      : s.state === "unavailable" ? unavailableMsg(s)
       : t("notConnected")(s.id);
     const warn = s.state === "expired" || s.state === "unavailable";
     const login = WEB_IDS.includes(s.id) && (s.state !== "expired" || s.source === "web" || !webLogins.includes(s.id))
@@ -875,6 +935,7 @@ function dockRows() {
 function dockLabel(s) {
   if (!hasNumbers(s)) {
     if (s.state === "loading") return "…";
+    if (s.state === "unavailable") return t("offlineShort");
     return s.state === "expired" ? t("expiredShort") : t("notConnectedShort");
   }
   return t(settings.mode === "used" ? "used" : "left");
@@ -926,7 +987,10 @@ function dockCell(s) {
        <div class="bar"><i style="width:0%"></i></div>
        <div class="reset">${esc(
          // Before the first reading there is nothing to do yet: say nothing.
-         s.state === "loading" ? "" : WEB_IDS.includes(s.id) ? t("dockSignIn") : t("howToConnect")
+         // An unreachable service is signed in already — its line carries why.
+         s.state === "loading" ? ""
+           : s.state === "unavailable" ? noteReason(s.note) || t("offlineShort")
+           : WEB_IDS.includes(s.id) ? t("dockSignIn") : t("howToConnect")
        )}</div>`;
   const trend = live ? dockTrend(s) : "";
   // A quiet squircle is a button in all but name: give it the keyboard too.
@@ -1048,14 +1112,15 @@ function syncDockWidth() {
   panel.style.width = `${Math.max(MIN_W, n * CELL_W + (n - 1) * CELL_GAP + FRAME_W)}px`;
 }
 
-/** The shortcut switch in the drawer's foot: on shows the keys, off says so. */
+/** The shortcut switch in the drawer's foot: on shows the keys, off says so.
+ *  Both read the way the settings view spells them, so the dock shows the
+ *  chord the user actually picked. */
 function paintDockShortcut() {
   const btn = document.getElementById("dock-shortcut");
   if (!btn) return;
   const on = !!settings.shortcut;
   btn.classList.toggle("on", on);
-  // The dock spells the chord the way the original did: ⌘⇧U / Ctrl+⇧U.
-  btn.textContent = on ? (IS_MAC ? "⌘⇧U" : "Ctrl+⇧U") : t("shortcut");
+  btn.textContent = shortcutLabel(settings.shortcut);
   btn.setAttribute("aria-pressed", on ? "true" : "false");
   btn.title = t(on ? "dockShortcutOn" : "dockShortcutOff");
 }
@@ -1278,6 +1343,21 @@ function shortcutLabel(keys) {
   return IS_MAC ? `⌘⇧${tail}` : `Ctrl+Shift+${tail}`;
 }
 
+/** Remember a chord as the one the switches turn back on. */
+function rememberShortcut(keys) {
+  if (!keys) return;
+  settings.lastShortcut = normalizeLastShortcut(keys);
+  localStorage.setItem("last-shortcut", settings.lastShortcut);
+}
+
+/** Turn the global shortcut on (a preset) or off (""). Turning it off keeps
+ *  the chord the user chose, so the next On is that one, not ⌘⇧U. */
+function setShortcut(keys) {
+  settings.shortcut = normalizeShortcut(keys);
+  localStorage.setItem("shortcut", settings.shortcut);
+  if (settings.shortcut) rememberShortcut(settings.shortcut);
+}
+
 function paintShortcutSeg() {
   document.querySelectorAll('[data-setting="shortcut"] button').forEach((b) => {
     b.textContent = shortcutLabel(b.dataset.value);
@@ -1301,6 +1381,7 @@ function applyShortcut() {
       if (held === wanted) return;
       settings.shortcut = held || "";
       localStorage.setItem("shortcut", settings.shortcut);
+      rememberShortcut(settings.shortcut);
       paintShortcutSeg();
       showShortcutState();
       paintDockShortcut();
@@ -1313,7 +1394,7 @@ function applyShortcut() {
       document.querySelectorAll('.seg[data-setting="shortcut"] button').forEach((b) =>
         b.classList.toggle("on", b.dataset.value === "")
       );
-      note.textContent = t("scTaken");
+      note.textContent = t(WAYLAND ? "scWayland" : "scTaken");
       note.hidden = false;
       paintDockShortcut();
     });
@@ -1366,12 +1447,15 @@ async function boot() {
   if (PREVIEW) {
     root.classList.add("preview");
     if (params.has("bare")) root.classList.add("bare");
+    // `?wayland=1`: the Linux session's window-placing limits, for previews.
+    if (params.get("wayland") === "1") WAYLAND = true;
     // `?frame=1`: the panel alone on a transparent page (README hero shots).
     if (params.has("frame")) root.classList.add("frame");
   } else {
     try {
       const info = await invoke("app_info");
       platform = info.platform;
+      WAYLAND = !!info.wayland;
       document.getElementById("version").textContent = "v" + info.version;
     } catch (_) {}
     if (platform === "macos") root.classList.add("vibrancy");
@@ -1401,8 +1485,12 @@ async function boot() {
       const b = e.target.closest("button");
       if (!b) return;
       const key = seg.dataset.setting;
-      settings[key] = b.dataset.value;
-      localStorage.setItem(key, settings[key]);
+      // The shortcut has its own setter, so the last chosen chord is kept.
+      if (key === "shortcut") setShortcut(b.dataset.value);
+      else {
+        settings[key] = b.dataset.value;
+        localStorage.setItem(key, settings[key]);
+      }
       if (key === "tray") invoke("set_tray_mode", { mode: settings.tray }).catch(() => {});
       if (key === "shortcut") applyShortcut();
       if (key === "lang") syncLang();
@@ -1436,7 +1524,12 @@ async function boot() {
   });
 
   const edgeSwitch = document.getElementById("edge-hide");
+  // Wayland lets no app move its own window, so tucking has nothing to do
+  // there: the switch is off and says why instead of pretending.
+  if (WAYLAND) settings.edgeTuck = false;
   edgeSwitch.checked = settings.edgeTuck;
+  edgeSwitch.disabled = WAYLAND;
+  if (WAYLAND) edgeSwitch.closest(".setting").title = t("edgeWayland");
   edgeSwitch.addEventListener("change", () => {
     settings.edgeTuck = edgeSwitch.checked;
     localStorage.setItem("edge-hide", settings.edgeTuck ? "1" : "0");
@@ -1452,9 +1545,12 @@ async function boot() {
   function syncDockEdge() {
     dockEdge.classList.toggle("on", settings.edgeTuck);
     dockEdge.setAttribute("aria-pressed", settings.edgeTuck ? "true" : "false");
+    dockEdge.disabled = WAYLAND;
+    if (WAYLAND) dockEdge.title = t("edgeWayland");
   }
   syncDockEdge();
   dockEdge.addEventListener("click", () => {
+    if (WAYLAND) return;
     settings.edgeTuck = !settings.edgeTuck;
     localStorage.setItem("edge-hide", settings.edgeTuck ? "1" : "0");
     edgeSwitch.checked = settings.edgeTuck;
@@ -1483,10 +1579,9 @@ async function boot() {
   });
   document.getElementById("dock-colors-reset-all").addEventListener("click", resetAllColors);
   document.getElementById("dock-shortcut").addEventListener("click", () => {
-    settings.shortcut = settings.shortcut ? "" : SHORTCUTS[0];
-    localStorage.setItem("shortcut", settings.shortcut);
+    // Back on goes to the chord last chosen, not to the first preset.
+    setShortcut(settings.shortcut ? "" : settings.lastShortcut);
     applyShortcut();
-    paintDockShortcut();
   });
 
   document.querySelectorAll(".view-seg").forEach((seg) =>

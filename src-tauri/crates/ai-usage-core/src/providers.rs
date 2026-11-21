@@ -278,13 +278,21 @@ fn http_post_json(
 fn run_with_timeout(program: &str, args: &[&str], timeout: Duration) -> Option<String> {
     use std::io::Read;
     use std::process::{Command, Stdio};
-    let mut child = Command::new(program)
-        .args(args)
+    let mut cmd = Command::new(program);
+    cmd.args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
+        .stderr(Stdio::null());
+    // The app is a GUI process on Windows, so it owns no console and Windows
+    // would make a child one — a black box flashing on screen every time
+    // `gh auth token` runs. CREATE_NO_WINDOW keeps it invisible; the other
+    // platforms have no console to suppress.
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000);
+    }
+    let mut child = cmd.spawn().ok()?;
     let deadline = Instant::now() + timeout;
     loop {
         match child.try_wait() {

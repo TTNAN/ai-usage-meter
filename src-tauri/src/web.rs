@@ -67,6 +67,12 @@ fn site(id: &str) -> Option<&'static Site> {
 fn user_agent() -> Option<&'static str> {
     if cfg!(target_os = "macos") {
         Some("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15")
+    } else if cfg!(target_os = "linux") {
+        // WebKitGTK introduces itself as "Safari on Linux" — a combination
+        // that does not exist, which sign-in pages and Cloudflare read as a
+        // bot. A Linux Chrome UA is what a real browser on the same machine
+        // sends.
+        Some("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
     } else {
         None // WebView2 already identifies as Edge.
     }

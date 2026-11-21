@@ -4,7 +4,7 @@
 
 # AI Usage Meter
 
-**Your Claude, ChatGPT (Codex), Grok, Gemini and GitHub Copilot limits — live in the menu bar.**
+**Your Claude, ChatGPT (Codex), Grok, Gemini and GitHub Copilot limits — live in the menu bar or system tray.**
 
 One app, two shapes: the **rings popover** for the full picture, the **dock panel** that puts all five services and their reset times in one place — switch anytime, with the same settings and colours on both.
 
@@ -12,7 +12,7 @@ One app, two shapes: the **rings popover** for the full picture, the **dock pane
 
 [![Build](https://github.com/TTNAN/ai-usage-meter/actions/workflows/build.yml/badge.svg)](https://github.com/TTNAN/ai-usage-meter/actions/workflows/build.yml)
 [![Release](https://img.shields.io/github/v/release/TTNAN/ai-usage-meter?include_prereleases&color=6e9bff)](https://github.com/TTNAN/ai-usage-meter/releases/latest)
-![Platforms](https://img.shields.io/badge/macOS%20%7C%20Windows-111?logo=tauri&logoColor=white)
+![Platforms](https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-111?logo=tauri&logoColor=white)
 [![License](https://img.shields.io/badge/license-MIT-b38cff)](./LICENSE)
 
 <picture>
@@ -27,7 +27,7 @@ One app, two shapes: the **rings popover** for the full picture, the **dock pane
 
 </div>
 
-Tired of hitting "usage limit reached" mid-task? AI Usage Meter puts every 5-hour window, weekly limit, per-model allowance and reset countdown for all five services in your menu bar. **No browser tabs, no pasted cookies, no servers.**
+Tired of hitting "usage limit reached" mid-task? AI Usage Meter puts every 5-hour window, weekly limit, per-model allowance and reset countdown for all five services in your menu bar or system tray. **No browser tabs, no pasted cookies, no servers.**
 
 ## Highlights
 
@@ -41,9 +41,9 @@ Tired of hitting "usage limit reached" mid-task? AI Usage Meter puts every 5-hou
 - **Plan aware** — picks up Max, Pro, Plus, SuperGrok, Ultra, Individual and friends.
 - **Zero setup** — reuses the logins of the ChatGPT desktop app (Codex), Claude Code, Grok Build, Gemini CLI / Antigravity and the GitHub CLI / Copilot CLI. Only use Claude or Grok on the web or in their apps? Sign in once in Settings. Gemini's access token expires after an hour: the app renews it with the refresh token and writes it back to `~/.gemini/oauth_creds.json`, so you never have to run `gemini` again.
 - **Live** — re-reads every 1 to 5 minutes in the background, so usage from the web, the apps or the CLI shows up as it happens.
-- **Feels native** — real macOS popover material, follows light and dark mode, opens from the icon and tucks away when you click elsewhere; a tray flyout on Windows.
-- **Drops where you drop it, and docks to the edge** — drag it anywhere by the header or any empty spot; drop it against the left or right screen edge and it snaps there, slides off-screen when it loses focus leaving a 12 px grab handle, and slides back when you click that handle (or the menu-bar icon). "Tuck at screen edge" in Settings turns it off.
-- **Your colours** — Settings → Colors has one row per service: click the swatch for the system colour picker, or one of the presets, and the concentric rings, progress bars and accents follow at once; the Windows tray bars use the same colours. ↺ or "Reset all" restores each service's own accent. The dock's own Colors button opens the same set, right under the tray ([what it looks like](docs/dock-colors.png)).
+- **Feels native** — real macOS popover material, follows light and dark mode, opens from the icon and tucks away when you click elsewhere; a tray flyout on Windows, the tray menu on Linux (X11).
+- **Drops where you drop it, and docks to the edge** — drag it anywhere by the header or any empty spot; drop it against the left or right screen edge and it snaps there, slides off-screen when it loses focus leaving a 12 px grab handle, and slides back when you click that handle (or the menu-bar icon). "Tuck at screen edge" in Settings turns it off. (A Wayland session places windows itself, so the switch is greyed out there and says why.)
+- **Your colours** — Settings → Colors has one row per service: click the swatch for the system colour picker, or one of the presets, and the concentric rings, progress bars and accents follow at once; the Windows and Linux tray bars use the same colours. ↺ or "Reset all" restores each service's own accent. The dock's own Colors button opens the same set, right under the tray ([what it looks like](docs/dock-colors.png)).
 - **English and 中文** — follows your system language, switchable in Settings.
 - **Calm and honest** — gentle background polling, rate-limited manual refresh; one failed request keeps the last reading (clearly marked) and it never makes numbers up.
 - **Tiny** — Tauri v2 and plain HTML/CSS/JS. No Node, no bundler.
@@ -52,12 +52,13 @@ Tired of hitting "usage limit reached" mid-task? AI Usage Meter puts every 5-hou
 
 ## Install
 
-Grab the latest from [Releases](https://github.com/TTNAN/ai-usage-meter/releases/latest) — [v0.7.0](https://github.com/TTNAN/ai-usage-meter/releases/tag/v0.7.0) today, with the macOS `.dmg` and the Windows `.exe` and `.msi`:
+Grab the latest from [Releases](https://github.com/TTNAN/ai-usage-meter/releases/latest) — [v0.7.0](https://github.com/TTNAN/ai-usage-meter/releases/tag/v0.7.0) today, with the macOS `.dmg`, the Windows `.exe` and `.msi`, and the Linux `.deb` and `.AppImage`:
 
 | Platform | File | Notes |
 | --- | --- | --- |
 | macOS (Apple silicon + Intel) | `.dmg` | Drag to Applications. Not notarised yet: right-click → Open the first time, or run the command below |
 | Windows 10 / 11 | `.exe` or `.msi` | Per-user install, no admin needed |
+| Linux x64 (Ubuntu / Debian) | `.deb` or `.AppImage` | Needs `libwebkit2gtk-4.1` and an AppIndicator extension for the tray (Ubuntu ships it; stock GNOME needs the AppIndicator extension) |
 
 ```bash
 xattr -cr "/Applications/AI Usage Meter.app"
@@ -65,6 +66,8 @@ xattr -cr "/Applications/AI Usage Meter.app"
 
 > [!TIP]
 > The app is not notarised yet, so if macOS blocks the first launch, right-click → Open (or run the command above) once and it opens normally from then on.
+>
+> Linux: install the `.deb` with `sudo apt install ./ai-usage-meter_0.7.0_amd64.deb`, or `chmod +x` the `.AppImage` and run it (AppImage needs FUSE, or use `--appimage-extract-and-run`). A Wayland session grants no global shortcut and lets no app place its own window, so neither the shortcut nor edge tucking is available there — Settings says so.
 
 Then sign in to whichever tools you use (the rest just show "Not connected"):
 
@@ -136,8 +139,10 @@ python3 -m http.server -d src 8000
 # http://localhost:8000/?state=trend         the rings view, to look at the sparklines and ETAs
 # http://localhost:8000/?state=empty          first run
 # http://localhost:8000/?state=mixed          mixed (not connected / expired)
+# http://localhost:8000/?state=down           two unreachable (timed out / HTTP 502)
 # http://localhost:8000/?state=four           four connected (four rings)
 # http://localhost:8000/?view=settings        settings
+# add &wayland=1 to preview the greyed-out edge switch of a Wayland session
 # add &lang=zh or &lang=en to force the UI language
 ```
 
@@ -148,6 +153,14 @@ cargo install tauri-cli --version "^2"
 cargo tauri dev                    # develop
 cargo tauri build                  # package
 AI_USAGE_METER_MOCK=1 cargo tauri dev   # run with demo data
+```
+
+On Linux, install the system libraries first (Ubuntu / Debian):
+
+```bash
+sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
+  libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+cargo tauri build --bundles deb,appimage   # Linux ships these two (rpm needs rpmbuild)
 ```
 
 The backend comes in two pieces: what is this app's alone in `src-tauri/src/` (tray, window, commands, poller, web sign-in), and the Tauri-free core in `src-tauri/crates/ai-usage-core/` (the five providers, low-quota rules, the tray icon, the edge maths). Both views share the one backend, and the window takes its size from the page (`set_window_size`), which is how the rings popover and the dock bar live in the same native window.
@@ -166,8 +179,8 @@ Want another service (Cursor, Windsurf…)? Open an [issue](https://github.com/T
 - [x] Usage trend sparkline and a burn-rate ETA
 - [x] A global shortcut (`⌘⇧U` / `Ctrl+Shift+U`)
 - [x] The Dock edition folded into one app: rings and dock views (0.7.0)
+- [x] A Linux build: `.deb` and `.AppImage`, with a tray icon
 - [ ] More services: Cursor, Windsurf
-- [ ] Linux tray
 - [ ] Signed and notarised macOS builds
 
 ## Thanks

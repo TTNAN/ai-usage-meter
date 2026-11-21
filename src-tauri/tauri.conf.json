@@ -41,12 +41,12 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "longDescription": "AI Usage Meter lives in your menu bar (macOS) or system tray (Windows) and shows how much of your Claude, Codex, Grok, Gemini and GitHub Copilot limits you have left. One window, two shapes: concentric rings with every quota window and reset countdown, or a dock panel of brand-coloured tiles — switch anytime, in dark or light. It reuses the logins of the official Claude Code, Codex, Grok Build, Gemini CLI and GitHub Copilot CLIs — no passwords, no cookies, no servers.",
+    "longDescription": "AI Usage Meter lives in your menu bar (macOS) or system tray (Windows, Linux) and shows how much of your Claude, Codex, Grok, Gemini and GitHub Copilot limits you have left. One window, two shapes: concentric rings with every quota window and reset countdown, or a dock panel of brand-coloured tiles — switch anytime, in dark or light. It reuses the logins of the official Claude Code, Codex, Grok Build, Gemini CLI and GitHub Copilot CLIs — no passwords, no cookies, no servers.",
     "macOS": {
       "infoPlist": "Info.plist",
       "minimumSystemVersion": "10.15"
     },
-    "shortDescription": "Claude, ChatGPT (Codex), Grok, Gemini and Copilot quota — a rings popover or a dock panel, from your menu bar.",
+    "shortDescription": "Claude, ChatGPT (Codex), Grok, Gemini and Copilot quota — a rings popover or a dock panel, from your menu bar or system tray.",
     "targets": "all",
     "windows": {
       "nsis": {
