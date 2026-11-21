@@ -15,13 +15,16 @@
 //! Session cookies stay inside the app's own webview storage. We never read
 //! them out, copy them or send them anywhere else.
 
-use crate::providers;
 use crate::AppState;
+use ai_usage_core::providers;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 const REPORT_HOST: &str = "aum-report.invalid";
+/// The bare page we load to ask a site for its numbers: a static text file,
+/// so a poll costs one small request instead of a whole app.
+const LIGHT_PATH: &str = "/robots.txt";
 
 struct Site {
     id: &'static str,
@@ -49,7 +52,7 @@ const SITES: [Site; 2] = [
         name: "Grok",
         host: "grok.com",
         login_url: "https://accounts.x.ai/sign-in?redirect=grok-com",
-        poll_url: "https://grok.com/?_s=usage",
+        poll_url: "https://grok.com/robots.txt",
         session_cookies: &["sso", "sso-rw"],
         every_secs: 300,
     },
@@ -72,7 +75,10 @@ fn user_agent() -> Option<&'static str> {
 // --------------------------------------------------------- persistence
 
 fn logins_path(app: &AppHandle) -> Option<PathBuf> {
-    app.path().app_config_dir().ok().map(|d| d.join("web-logins.json"))
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|d| d.join("web-logins.json"))
 }
 
 pub fn load_logins(app: &AppHandle) -> HashSet<String> {
@@ -143,8 +149,16 @@ fn claude_js() -> String {
 /// Runs before grok.com's own scripts: when the usage page asks for its
 /// credits config, keep a copy of the answer.
 fn grok_init_js() -> String {
-    format!("if (location.hostname === 'grok.com') {{ {} ", report_js("grok"))
-        + r#"
+    format!(
+        "if (location.hostname === 'grok.com') {{ {send}\n{intercept}\n  window.__aumFallback = () => {{ {ask} }};\n}}\n",
+        send = report_js("grok"),
+        intercept = GROK_INTERCEPT_JS,
+        ask = grok_ask_js(),
+    )
+}
+
+/// Watching fetch for the page's own credits request (full grok.com page).
+const GROK_INTERCEPT_JS: &str = r#"
   const b64 = (buf) => { const a = new Uint8Array(buf); let s = ''; for (let i = 0; i < a.length; i++) s += String.fromCharCode(a[i]); return btoa(s); };
   const origFetch = window.fetch.bind(window);
   const handle = (res) => {
@@ -161,18 +175,29 @@ fn grok_init_js() -> String {
     } catch (e) {}
     return res;
   };
-  window.__aumFallback = async () => {
-    try {
-      const res = await origFetch('/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig', {
-        method: 'POST', credentials: 'include',
-        headers: { 'content-type': 'application/grpc-web+proto', 'x-grpc-web': '1', 'x-user-agent': 'connect-es/2.1.1' },
-        body: new Uint8Array([0, 0, 0, 0, 2, 8, 0]),
-      });
-      handle(res);
-    } catch (e) { __aumSend({ error: String(e) }); }
-  };
-}
-"#
+"#;
+
+/// POSTs to grok.com's credits endpoint (gRPC-web) and reports whatever comes
+/// back. Self-contained on purpose: it is the page's late fallback, and the
+/// only script that runs on the bare robots.txt document, where none of
+/// grok.com's own code exists.
+const GROK_ASK_JS: &str = r#"(async () => {
+  const send = (o) => { try { location.href = 'https://{HOST}/grok?d=' + encodeURIComponent(JSON.stringify(o)); } catch (e) {} };
+  const b64 = (buf) => { const a = new Uint8Array(buf); let s = ''; for (let i = 0; i < a.length; i++) s += String.fromCharCode(a[i]); return btoa(s); };
+  try {
+    const res = await fetch('/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig', {
+      method: 'POST', credentials: 'include',
+      headers: { 'content-type': 'application/grpc-web+proto', 'x-grpc-web': '1', 'x-user-agent': 'connect-es/2.1.1' },
+      body: new Uint8Array([0, 0, 0, 0, 2, 8, 0]),
+    });
+    if (res.status === 401 || res.status === 403) return send({ auth: false });
+    if (!res.ok) return send({ error: 'HTTP ' + res.status });
+    send({ b64: b64(await res.arrayBuffer()), status: res.status, grpc: res.headers.get('grpc-status') || '0' });
+  } catch (e) { send({ error: String(e) }); }
+})()"#;
+
+fn grok_ask_js() -> String {
+    GROK_ASK_JS.replace("{HOST}", REPORT_HOST)
 }
 
 // ------------------------------------------------------------ reports
@@ -198,15 +223,68 @@ fn handle_report(app: &AppHandle, url: &Url) {
         "claude" => providers::claude_from_web(&report),
         _ => providers::grok_from_web(&report, providers::now_unix()),
     };
-    state.web_last_report.lock().unwrap().insert(site.id, providers::now_unix());
+    state
+        .web_last_report
+        .lock()
+        .unwrap()
+        .insert(site.id, providers::now_unix());
     state.web.lock().unwrap().insert(site.id, status);
     crate::apply_web_results(app);
+    // The report is the last thing this hidden window was for: let go of it
+    // instead of keeping a whole webview resident until the next poll. The
+    // session lives in the app's shared webview storage, so the next poll
+    // opens a fresh worker and picks it up again.
+    close_worker_after_report(app, site.id);
+}
+
+/// Closes the hidden worker once the report it carried is in. Deferred a
+/// moment (this runs inside the window's own navigation callback) and guarded
+/// by the worker epoch, so a poll that has already taken the window over is
+/// never closed out from under itself.
+fn close_worker_after_report(app: &AppHandle, id: &'static str) {
+    let epoch = app
+        .state::<AppState>()
+        .web_worker_epoch
+        .lock()
+        .unwrap()
+        .get(id)
+        .copied()
+        .unwrap_or(0);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let state = app.state::<AppState>();
+        if state
+            .web_worker_epoch
+            .lock()
+            .unwrap()
+            .get(id)
+            .copied()
+            .unwrap_or(0)
+            != epoch
+        {
+            return;
+        }
+        if let Some(w) = app.get_webview_window(&worker_label(id)) {
+            let _ = w.close();
+        }
+    });
 }
 
 // ------------------------------------------------------------- windows
 
 fn worker_label(id: &str) -> String {
     format!("web-{id}")
+}
+
+/// Counts the workers a site has been given, so a deferred close can tell
+/// whether the window it meant is still the current one.
+fn bump_worker_epoch(app: &AppHandle, id: &'static str) -> u64 {
+    let state = app.state::<AppState>();
+    let mut epochs = state.web_worker_epoch.lock().unwrap();
+    let n = epochs.entry(id).or_insert(0);
+    *n += 1;
+    *n
 }
 
 fn worker(app: &AppHandle, site: &'static Site) -> Option<WebviewWindow> {
@@ -232,7 +310,9 @@ fn worker(app: &AppHandle, site: &'static Site) -> Option<WebviewWindow> {
             // Bounced to a sign-in page: the session is gone.
             let h = u.host_str().unwrap_or("");
             let p = u.path();
-            if h == "accounts.x.ai" || (h == host && (p.starts_with("/login") || p.starts_with("/sign-in"))) {
+            if h == "accounts.x.ai"
+                || (h == host && (p.starts_with("/login") || p.starts_with("/sign-in")))
+            {
                 let report = format!("https://{REPORT_HOST}/{site_id}?d=%7B%22auth%22%3Afalse%7D");
                 if let Ok(r) = Url::parse(&report) {
                     handle_report(&nav_app, &r);
@@ -245,7 +325,8 @@ fn worker(app: &AppHandle, site: &'static Site) -> Option<WebviewWindow> {
             if payload.event() != tauri::webview::PageLoadEvent::Finished {
                 return;
             }
-            if payload.url().host_str() != Some(host) {
+            let url = payload.url();
+            if url.host_str() != Some(host) {
                 return;
             }
             match site_id {
@@ -253,14 +334,28 @@ fn worker(app: &AppHandle, site: &'static Site) -> Option<WebviewWindow> {
                     let _ = w.eval(claude_js().as_str());
                 }
                 _ => {
-                    // The usage page asks for its own numbers; if it hasn't
-                    // within a few seconds, ask directly.
+                    if url.path() == LIGHT_PATH {
+                        // A bare text document: nothing on it will ask for the
+                        // numbers, so run the same ask window.__aumFallback
+                        // runs, right away instead of waiting.
+                        let _ = w.eval(grok_ask_js().as_str());
+                        return;
+                    }
+                    // The full site (Cloudflare wanted a real page first): its
+                    // own scripts ask for the numbers; if they haven't within
+                    // a few seconds, ask directly.
                     let app = w.app_handle().clone();
                     std::thread::spawn(move || {
                         let started = providers::now_unix();
                         std::thread::sleep(std::time::Duration::from_secs(12));
                         let state = app.state::<AppState>();
-                        let last = state.web_last_report.lock().unwrap().get("grok").copied().unwrap_or(0);
+                        let last = state
+                            .web_last_report
+                            .lock()
+                            .unwrap()
+                            .get("grok")
+                            .copied()
+                            .unwrap_or(0);
                         if last < started {
                             if let Some(w) = app.get_webview_window(&worker_label("grok")) {
                                 let _ = w.eval("window.__aumFallback && window.__aumFallback()");
@@ -276,7 +371,9 @@ fn worker(app: &AppHandle, site: &'static Site) -> Option<WebviewWindow> {
     if let Some(ua) = user_agent() {
         b = b.user_agent(ua);
     }
-    b.build().ok()
+    b.build().ok().inspect(|_| {
+        bump_worker_epoch(app, site.id);
+    })
 }
 
 /// Called from the poller: re-read every signed-in site that is due.
@@ -299,19 +396,27 @@ pub fn poll_due(app: &AppHandle, force: bool) {
             continue;
         }
         let home = state.web_use_home.lock().unwrap().remove(site.id);
-        let target = if home { format!("https://{}/", site.host) } else { site.poll_url.to_string() };
+        let target = if home {
+            format!("https://{}/", site.host)
+        } else {
+            site.poll_url.to_string()
+        };
         let fresh = app.get_webview_window(&worker_label(site.id)).is_none();
         let Some(w) = worker(app, site) else { continue };
         if !fresh {
             if let Ok(u) = Url::parse(&target) {
                 let _ = w.navigate(u);
             }
+            // This window is ours again: cancel any close still on its way.
+            bump_worker_epoch(app, site.id);
         }
     }
 }
 
 fn has_session(w: &WebviewWindow, site: &Site) -> bool {
-    let Ok(base) = Url::parse(&format!("https://{}/", site.host)) else { return false };
+    let Ok(base) = Url::parse(&format!("https://{}/", site.host)) else {
+        return false;
+    };
     w.cookies_for_url(base)
         .map(|cs| cs.iter().any(|c| site.session_cookies.contains(&c.name())))
         .unwrap_or(false)
@@ -344,7 +449,9 @@ pub fn open_login(app: &AppHandle, id: &str) -> Result<(), String> {
         // Up to 15 minutes to finish signing in.
         for _ in 0..600 {
             std::thread::sleep(std::time::Duration::from_millis(1500));
-            let Some(w) = app.get_webview_window(&label) else { return };
+            let Some(w) = app.get_webview_window(&label) else {
+                return;
+            };
             let on_site = w
                 .url()
                 .map(|u| {
@@ -385,15 +492,28 @@ pub fn sign_out(app: &AppHandle, id: &str) -> Result<(), String> {
         save_logins(app, &logins);
     }
     state.web.lock().unwrap().remove(site.id);
-    let w = worker(app, site);
-    if let Some(w) = &w {
-        let mut hosts = vec![format!("https://{}/", site.host)];
-        if site.id == "grok" {
-            hosts.push("https://accounts.x.ai/".into());
-            hosts.push("https://x.ai/".into());
-        } else {
-            hosts.push("https://anthropic.com/".into());
-        }
+    state.web_last_poll.lock().unwrap().remove(site.id);
+    state.web_use_home.lock().unwrap().remove(site.id);
+
+    let mut hosts = vec![format!("https://{}/", site.host)];
+    if site.id == "grok" {
+        hosts.push("https://accounts.x.ai/".into());
+        hosts.push("https://x.ai/".into());
+    } else {
+        hosts.push("https://anthropic.com/".into());
+    }
+
+    // Every webview in the app shares one cookie store, so whichever window is
+    // already open can forget the session — the hidden worker if it is still
+    // around, else a login window, else the popover. Nothing is created just
+    // to sign out: signing out must never send a request to the service.
+    let worker = app.get_webview_window(&worker_label(site.id));
+    let login = app.get_webview_window(&format!("login-{}", site.id));
+    let cleaner = worker
+        .clone()
+        .or_else(|| login.clone())
+        .or_else(|| app.get_webview_window("main"));
+    if let Some(w) = &cleaner {
         for h in hosts {
             if let Ok(u) = Url::parse(&h) {
                 for c in w.cookies_for_url(u).unwrap_or_default() {
@@ -401,6 +521,11 @@ pub fn sign_out(app: &AppHandle, id: &str) -> Result<(), String> {
                 }
             }
         }
+    }
+    if let Some(w) = worker {
+        let _ = w.close();
+    }
+    if let Some(w) = login {
         let _ = w.close();
     }
     crate::apply_web_results(app);

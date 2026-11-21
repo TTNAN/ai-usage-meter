@@ -1,0 +1,14 @@
+[package]
+name = "ai-usage-core"
+version = "0.6.0"
+description = "Usage providers, low-quota alert rules, the menu-bar icon and the screen-edge maths shared by AI Usage Meter and AI Usage Meter Dock."
+authors = ["TTNAN"]
+license = "MIT"
+edition = "2021"
+rust-version = "1.77"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
