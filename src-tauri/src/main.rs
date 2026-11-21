@@ -44,18 +44,33 @@ const TICK: Duration = Duration::from_secs(30);
 /// ⌘⇧U on macOS, Ctrl+Shift+U elsewhere. The UI can switch or turn it off.
 const DEFAULT_SHORTCUT: &str = "CommandOrControl+Shift+U";
 
+/// Whether a login is a Wayland session, from the two variables that say so.
+///
+/// `XDG_SESSION_TYPE` is the session's own answer and wins whenever it says
+/// anything: an X11 session can still inherit a `WAYLAND_DISPLAY` from whatever
+/// launched it, and reading that alone used to put the window's tucking and the
+/// shortcut's error message in the wrong world. `WAYLAND_DISPLAY` is only the
+/// fallback for a login that never set the session type.
+fn is_wayland_env(session_type: Option<&str>, wayland_display: Option<&str>) -> bool {
+    match session_type.map(str::trim).filter(|t| !t.is_empty()) {
+        Some(kind) => kind.eq_ignore_ascii_case("wayland"),
+        None => wayland_display.map(|v| !v.is_empty()).unwrap_or(false),
+    }
+}
+
 /// Linux on Wayland: the compositor places windows itself (an app may not
 /// move its own) and hands out no global shortcut the way X11 does. Everything
 /// that slides or tucks the window, and the shortcut's error message, asks
 /// this first; on macOS and Windows it is always false.
 fn on_wayland() -> bool {
-    cfg!(target_os = "linux")
-        && (std::env::var("XDG_SESSION_TYPE")
-            .map(|v| v.eq_ignore_ascii_case("wayland"))
-            .unwrap_or(false)
-            || std::env::var_os("WAYLAND_DISPLAY")
-                .map(|v| !v.is_empty())
-                .unwrap_or(false))
+    if !cfg!(target_os = "linux") {
+        return false;
+    }
+    // `std::env` reads a non-Unicode value as an error; such a value is not a
+    // session type this app knows, so it counts as unset here.
+    let session = std::env::var("XDG_SESSION_TYPE").ok();
+    let display = std::env::var("WAYLAND_DISPLAY").ok();
+    is_wayland_env(session.as_deref(), display.as_deref())
 }
 
 /// Minimum seconds between automatic fetches, per provider.
@@ -206,26 +221,43 @@ fn fetch_due(state: &AppState, force: bool) -> Vec<ServiceStatus> {
         let mut last = lock(&state.last_fetch);
         for f in fresh {
             last.insert(f.id, now);
-            let merged = match cli.get(f.id) {
-                // One failed request shouldn't blank a row that was fine a
-                // minute ago: keep the last good numbers, clearly marked stale.
-                Some(old)
-                    if matches!(f.state, SvcState::Unavailable | SvcState::Changed)
-                        && old.state == SvcState::Connected
-                        && now - old.fetched_at < 30 * 60 =>
-                {
-                    ServiceStatus {
-                        stale: true,
-                        note: f.note.clone(),
-                        ..old.clone()
-                    }
-                }
-                _ => f,
+            let merged = {
+                let previous = cli.get(f.id);
+                fold_status(f, previous, now)
             };
             cli.insert(merged.id, merged);
         }
     }
     rebuild_cache(state)
+}
+
+/// How long a failed poll may keep showing the numbers from before it.
+const STALE_GRACE_SECS: i64 = 30 * 60;
+
+/// Folds a fresh answer into the one already shown for that service.
+///
+/// One failed request shouldn't blank a row that was fine a minute ago: an
+/// `Unavailable` answer keeps the last good numbers, clearly marked stale, with
+/// the failure's reason as the note. A `Changed` answer is not a failure — the
+/// service did answer, and what it said no longer fits what this app reads —
+/// so it passes straight through. Held back as stale `Connected` it would keep
+/// the rings and the dock showing numbers the service has already moved past,
+/// for up to half an hour after the app knew.
+fn fold_status(fresh: ServiceStatus, previous: Option<&ServiceStatus>, now: i64) -> ServiceStatus {
+    match previous {
+        Some(old)
+            if fresh.state == SvcState::Unavailable
+                && old.state == SvcState::Connected
+                && now - old.fetched_at < STALE_GRACE_SECS =>
+        {
+            ServiceStatus {
+                stale: true,
+                note: fresh.note.clone(),
+                ..old.clone()
+            }
+        }
+        _ => fresh,
+    }
 }
 
 /// Pick what a row shows when both a CLI login and an in-app web sign-in
@@ -1292,10 +1324,96 @@ fn store_anchor(app: &AppHandle, rect: &Rect) {
 
 #[cfg(test)]
 mod tests {
-    //! `cargo test` builds this binary's own tests on the CI runners, so the one
-    //! piece below — the note the `Moved` handler reads on the UI thread — is
-    //! exercised on Windows and macOS and not only on a developer's machine.
+    //! `cargo test` builds this binary's own tests on the CI runners, so the
+    //! pieces below — the note the `Moved` handler reads on the UI thread, the
+    //! folding of a failed poll into the last good numbers, and which session
+    //! counts as Wayland — are exercised on Windows and macOS and not only on a
+    //! developer's Linux machine.
+    use super::*;
     use ai_usage_core::edge::MoveNote;
+
+    /// A status with just the fields these tests look at.
+    fn status(state: SvcState, note: Option<&str>, fetched_at: i64) -> ServiceStatus {
+        ServiceStatus {
+            id: "claude",
+            label: "Claude",
+            state,
+            plan: None,
+            windows: Vec::new(),
+            note: note.map(str::to_string),
+            fetched_at,
+            stale: false,
+            source: "api",
+        }
+    }
+
+    #[test]
+    fn a_failed_poll_keeps_the_last_good_numbers_for_half_an_hour() {
+        let good = status(SvcState::Connected, None, 1_000);
+        let failed = status(SvcState::Unavailable, Some("claude.ai: timed out"), 1_300);
+        let merged = fold_status(failed, Some(&good), 1_300);
+        assert_eq!(merged.state, SvcState::Connected, "a hiccup is not news");
+        assert!(merged.stale, "and it is marked stale");
+        assert_eq!(merged.fetched_at, 1_000, "the readings are the old ones");
+        assert_eq!(
+            merged.note.as_deref(),
+            Some("claude.ai: timed out"),
+            "the row still says why it could not be checked"
+        );
+
+        // The grace window is 30 minutes: at its edge the failure is the news.
+        let at_edge = 1_000 + STALE_GRACE_SECS;
+        let failed = status(SvcState::Unavailable, None, at_edge);
+        let merged = fold_status(failed, Some(&good), at_edge);
+        assert_eq!(merged.state, SvcState::Unavailable);
+        assert!(!merged.stale, "past the window nothing is held back");
+        assert_eq!(merged.fetched_at, at_edge);
+    }
+
+    #[test]
+    fn a_changed_api_shows_at_once_instead_of_a_stale_connected_row() {
+        let good = status(SvcState::Connected, None, 1_000);
+        let changed = status(SvcState::Changed, Some("API has probably changed."), 1_100);
+        let merged = fold_status(changed, Some(&good), 1_100);
+        assert_eq!(
+            merged.state,
+            SvcState::Changed,
+            "the service answered that it moved: show that now"
+        );
+        assert!(!merged.stale, "a changed API is not a stale reading");
+        assert_eq!(merged.fetched_at, 1_100);
+        assert_eq!(merged.note.as_deref(), Some("API has probably changed."));
+
+        // With nothing to fold into, and with a previous failure, it is the answer.
+        assert_eq!(
+            fold_status(status(SvcState::Changed, None, 5), None, 5).state,
+            SvcState::Changed
+        );
+        let expired = status(SvcState::Expired, None, 100);
+        assert_eq!(
+            fold_status(status(SvcState::Changed, None, 200), Some(&expired), 200).state,
+            SvcState::Changed
+        );
+    }
+
+    #[test]
+    fn a_wayland_session_is_told_by_the_session_type_first() {
+        // An X11 login that inherited WAYLAND_DISPLAY from a parent process is
+        // still X11: the session type is the answer.
+        assert!(!is_wayland_env(Some("x11"), Some("wayland-0")));
+        assert!(!is_wayland_env(Some("X11"), Some("wayland-0")));
+        assert!(is_wayland_env(Some("wayland"), None));
+        assert!(is_wayland_env(Some("Wayland"), Some("wayland-0")));
+        // No session type at all: the display variable decides.
+        assert!(is_wayland_env(None, Some("wayland-0")));
+        assert!(!is_wayland_env(None, None));
+        assert!(!is_wayland_env(None, Some("")));
+        // An empty session type is not an answer either.
+        assert!(is_wayland_env(Some(""), Some("wayland-0")));
+        assert!(!is_wayland_env(Some("  "), None));
+        // A session type this app does not know is not Wayland.
+        assert!(!is_wayland_env(Some("tty"), Some("wayland-0")));
+    }
 
     #[test]
     fn our_own_move_is_claimed_once_and_a_drag_is_not() {
