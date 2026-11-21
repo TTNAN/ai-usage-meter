@@ -34,7 +34,7 @@ Tired of hitting "usage limit reached" mid-task? AI Usage Meter puts every 5-hou
 - **Live** — re-reads every 1 to 5 minutes in the background, so usage from the web, the apps or the CLI shows up as it happens.
 - **Feels native** — real macOS popover material, follows light and dark mode, opens from the icon and tucks away when you click elsewhere; a tray flyout on Windows.
 - **Drops where you drop it, and docks to the edge** — drag it anywhere by the header or any empty spot; drop it against the left or right screen edge and it snaps there, slides off-screen when it loses focus leaving a 12 px grab handle, and slides back when you click that handle (or the menu-bar icon). "Tuck at screen edge" in Settings turns it off.
-- **Your colours** — Settings → Colors has one row per service: click the swatch for the system colour picker, or one of the presets, and the concentric rings, progress bars and accents follow at once; the Windows / Linux tray bars use the same colours. ↺ or "Reset all" restores each service's own accent.
+- **Your colours** — Settings → Colors has one row per service: click the swatch for the system colour picker, or one of the presets, and the concentric rings, progress bars and accents follow at once; the Windows tray bars use the same colours. ↺ or "Reset all" restores each service's own accent.
 - **English and 中文** — follows your system language, switchable in Settings.
 - **Calm and honest** — gentle background polling, rate-limited manual refresh; one failed request keeps the last reading (clearly marked) and it never makes numbers up.
 - **Tiny** — Tauri v2 and plain HTML/CSS/JS. No Node, no bundler.
@@ -51,11 +51,11 @@ Grab the latest build from [Releases](https://github.com/TTNAN/ai-usage-meter/re
 | Windows 10 / 11 | `.exe` or `.msi` | Per-user install, no admin needed |
 
 ```bash
-xattr -d com.apple.quarantine "/Applications/AI Usage Meter.app"
+xattr -cr "/Applications/AI Usage Meter.app"
 ```
 
 > [!TIP]
-> Installing the cask with Homebrew? Add `--no-quarantine` and this is already taken care of — no manual step needed.
+> The app is not notarised yet, so if macOS blocks the first launch, right-click → Open (or run the command above) once and it opens normally from then on.
 
 Then sign in to whichever tools you use (the rest just show "Not connected"):
 
@@ -140,7 +140,7 @@ AI_USAGE_METER_MOCK=1 cargo tauri dev   # run with demo data
 The backend comes in two pieces: what is this app's alone in `src-tauri/src/` (tray, window, commands, poller, web sign-in), and the shared core in `src-tauri/crates/ai-usage-core/` (the five providers, low-quota rules, the tray icon, the edge maths). Each project keeps a byte-identical copy of the core so that it still builds from its own zip; `./sync-core.sh` copies this project's copy into its sibling and `./sync-core.sh --check` only compares.
 
 ```bash
-cd src-tauri/crates/ai-usage-core && cargo test   # core unit tests (58)
+cd src-tauri/crates/ai-usage-core && cargo test   # core unit tests
 cd src-tauri && cargo test                        # app layer (needs Tauri's system deps)
 ```
 
