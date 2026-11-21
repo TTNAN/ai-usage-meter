@@ -42,7 +42,9 @@ jobs:
           workspaces: src-tauri
       - name: Unit tests
         working-directory: src-tauri
-        run: cargo test
+        run: |
+          cargo test
+          cargo test --manifest-path crates/ai-usage-core/Cargo.toml
 
   build:
     name: Build (${{ matrix.name }})
