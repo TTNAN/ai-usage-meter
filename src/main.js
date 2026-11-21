@@ -392,7 +392,17 @@ function parseShortcut(keys) {
     if (!mods.includes(mod)) mods.push(mod);
   }
   const key = KEY_CANON.get((cut === -1 ? keys : keys.slice(cut + 1)).trim().toLowerCase());
-  return key ? { mods, key } : null;
+  if (!key) return null;
+  // Tab is never a chord, with or without modifiers: the recorder refuses it
+  // (it moves the focus on, or switches tabs), so a stored one is not read
+  // back as a shortcut this window would hold.
+  if (key === "Tab") return null;
+  // A chord needs a modifier on it: a lone letter would fire while the user
+  // types. The recorder makes the same one exception — a function key alone.
+  // Read back without this rule, a stored `U` would pass as a global shortcut
+  // this window can hold but must never fire.
+  if (!mods.length && !/^F([1-9]|1[0-9]|2[0-4])$/.test(key)) return null;
+  return { mods, key };
 }
 
 function normalizeShortcut(v) {
@@ -1090,7 +1100,11 @@ function dockCell(s) {
   const trend = live ? dockTrend(s) : "";
   // A quiet squircle is a button in all but name: give it the keyboard too.
   const a11y = live ? "" : ` role="button" tabindex="0" aria-label="${esc(s.label)} · ${esc(dockLabel(s))}"`;
-  return `<div class="cell${live ? "" : " off"}" data-id="${s.id}">
+  // The reason travels with the tile: hovering it says exactly what the row's
+  // note says, so an unreachable, changed or expired service explains itself
+  // here as it does in the popover.
+  const title = s.note ? ` title="${esc(s.note)}"` : "";
+  return `<div class="cell${live ? "" : " off"}" data-id="${s.id}"${title}>
     <div class="tile ${DOCK_TILE[s.id]}${live ? "" : " off"}"${a11y}>${inner}</div>
     <div class="micro"${trend ? ` title="${esc(dockTrendTitle(s))}"` : ""}>${trend}</div>
   </div>`;
@@ -1675,7 +1689,11 @@ function onShortcutKey(e) {
     cancelShortcutRecording();
     return;
   }
-  if (e.code === "Tab" && plain) {
+  // Tab is never a chord, with or without modifiers: bare it moves the focus
+  // on, and ⌘/Ctrl+Tab switches tabs in the browser and in the app around it.
+  // Recorded, it would hijack that switch everywhere the app runs; so the
+  // recorder steps aside and lets the key do its own job.
+  if (e.code === "Tab" || e.key === "Tab") {
     cancelShortcutRecording();
     return;
   }
