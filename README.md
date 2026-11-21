@@ -124,7 +124,7 @@ xattr -cr "/Applications/AI Usage Meter.app"
 
 ## 风险说明
 
-这些都是非官方 / 内部接口，随时可能变化，届时对应一行会显示「暂时连不上」，而不是错误的数字；以各家官方设置页为准。低频只读轮询的风险较低，目前没有因此封号的公开案例，但我们无法保证。
+这些都是非官方 / 内部接口，随时可能变化：请求失败时对应一行显示「暂时连不上」，返回结构变了则显示「接口变了」并提示更新应用，而不是给一个错误的数字；以各家官方设置页为准。低频只读轮询的风险较低，目前没有因此封号的公开案例，但我们无法保证。
 
 ## 参与开发
 
@@ -140,6 +140,7 @@ python3 -m http.server -d src 8000
 # http://localhost:8000/?state=empty       首次启动
 # http://localhost:8000/?state=mixed       混合状态（未连接 / 登录过期）
 # http://localhost:8000/?state=down        两家连不上（超时 / HTTP 502）
+# http://localhost:8000/?state=changed     一家接口变了（Grok 的返回读不懂）
 # http://localhost:8000/?state=four        只连四家（四环总览）
 # http://localhost:8000/?view=settings     设置页（含服务配色与全局快捷键）
 # 加 &wayland=1 可预览 Wayland 下置灰的贴边开关

@@ -50,8 +50,13 @@ pub enum State {
     NotConnected,
     /// Login found but the service rejected it (401/403).
     Expired,
-    /// Request failed or the response was not understood.
+    /// The request failed (no network, a timeout, an HTTP error).
     Unavailable,
+    /// The service answered, but in a shape this app cannot read: its API has
+    /// probably changed and the app needs updating. Kept apart from
+    /// `Unavailable` (retried shortly, nothing to do) and from `Expired` (the
+    /// login works, so signing in again would not help).
+    Changed,
     /// Demo data (AI_USAGE_METER_MOCK=1 or browser preview).
     Mock,
 }
@@ -789,6 +794,11 @@ fn grok_token() -> Option<String> {
     .map(str::to_string)
 }
 
+/// What the row says when Grok answered, but in a shape this app cannot read.
+/// The wording matters: it tells the user the app is behind, not the login.
+const GROK_SHAPE_NOTE: &str =
+    "Grok answered in a format this app doesn't recognise — its API has probably changed.";
+
 pub fn fetch_grok() -> ServiceStatus {
     let base = ServiceStatus::new("grok", "Grok", State::NotConnected);
     let Some(token) = grok_token() else {
@@ -819,11 +829,14 @@ pub fn fetch_grok() -> ServiceStatus {
     };
     let windows = parse_grok(&v);
     if windows.is_empty() {
+        // A 200 with no `creditUsagePercent` in it: the endpoint answered, but
+        // not in a shape this app knows. That is not the same as "not logged
+        // in", so it must not read as one.
         return ServiceStatus {
-            state: State::Unavailable,
+            state: State::Changed,
             ..base
         }
-        .with_note("Grok returned a response we don't understand yet.");
+        .with_note(GROK_SHAPE_NOTE);
     }
     ServiceStatus {
         state: State::Connected,
@@ -1871,6 +1884,11 @@ fn web_auth_failed(report: &serde_json::Value) -> bool {
     report.get("auth").and_then(|a| a.as_bool()) == Some(false)
 }
 
+/// What the row says when claude.ai answered, but in a shape this app cannot
+/// read: the app is behind, not the login.
+const CLAUDE_WEB_SHAPE_NOTE: &str =
+    "claude.ai answered in a format this app doesn't recognise — its API has probably changed.";
+
 /// Report from the claude.ai webview:
 /// `{usage: <GET /api/organizations/{org}/usage>, capabilities: [...]}`,
 /// `{auth: false}` or `{error: "..."}`.
@@ -1918,12 +1936,14 @@ pub fn claude_from_web(report: &serde_json::Value) -> ServiceStatus {
     };
     let windows = parse_claude(usage);
     if windows.is_empty() {
+        // The page answered, but with nothing this app can read as usage: the
+        // shape moved, so the login is not the problem.
         return ServiceStatus {
-            state: State::Unavailable,
+            state: State::Changed,
             plan,
             ..base
         }
-        .with_note("claude.ai returned a response we don't understand yet.");
+        .with_note(CLAUDE_WEB_SHAPE_NOTE);
     }
     ServiceStatus {
         state: State::Connected,
@@ -1932,6 +1952,26 @@ pub fn claude_from_web(report: &serde_json::Value) -> ServiceStatus {
         ..base
     }
 }
+
+// A grok.com report. Three ways it can go wrong, and the row must not confuse
+// them:
+//
+// * the session was refused (401/403, or gRPC `UNAUTHENTICATED`) — the
+//   account is signed out, so sign in again;
+// * the request never got an answer (`{error: "HTTP 502"}`) — retried on the
+//   next poll, nothing for the user to do;
+// * grok.com answered, but not in a shape this app can read — its API moved,
+//   and the app needs updating. Reported as `Changed`, never as "not
+//   connected".
+const GROK_SIGNED_OUT_NOTE: &str = "grok.com sign-in expired.";
+const GROK_WEB_SHAPE_NOTE: &str =
+    "grok.com answered in a format this app doesn't recognise — its API has probably changed.";
+const GROK_WEB_EMPTY_NOTE: &str = "grok.com answered with an empty body.";
+
+/// gRPC statuses that mean "the caller is not allowed": `UNAUTHENTICATED` and
+/// `PERMISSION_DENIED`. Everything else non-zero is the server's problem, not
+/// the account's.
+const GRPC_NOT_ALLOWED: [i64; 2] = [16, 7];
 
 /// Report from the grok.com webview: `{b64: <GetGrokCreditsConfig gRPC-web
 /// response>, grpc: "<grpc-status>"}`, `{auth: false}` or `{error}`.
@@ -1945,15 +1985,19 @@ pub fn grok_from_web(report: &serde_json::Value, now: i64) -> ServiceStatus {
             state: State::Expired,
             ..base
         }
-        .with_note("grok.com sign-in expired.");
+        .with_note(GROK_SIGNED_OUT_NOTE);
     }
-    let grpc = report.get("grpc").and_then(|g| g.as_str()).unwrap_or("0");
-    if grpc == "16" || grpc == "7" {
+    let header_status = report
+        .get("grpc")
+        .and_then(|g| g.as_str())
+        .and_then(|g| g.trim().parse::<i64>().ok())
+        .unwrap_or(0);
+    if GRPC_NOT_ALLOWED.contains(&header_status) {
         return ServiceStatus {
             state: State::Expired,
             ..base
         }
-        .with_note("grok.com sign-in expired.");
+        .with_note(GROK_SIGNED_OUT_NOTE);
     }
     let bytes = report
         .get("b64")
@@ -1970,18 +2014,41 @@ pub fn grok_from_web(report: &serde_json::Value, now: i64) -> ServiceStatus {
         }
         .with_note(format!("grok.com: {why}"));
     };
-    match parse_grok_billing_proto(&bytes, now) {
-        Some(w) => ServiceStatus {
+    // A webview cannot read gRPC trailers as headers, so a refused call usually
+    // says so only inside the body: read that before judging the message.
+    if let Some(status) = grpc_trailer_status(&bytes) {
+        if GRPC_NOT_ALLOWED.contains(&status) {
+            return ServiceStatus {
+                state: State::Expired,
+                ..base
+            }
+            .with_note(GROK_SIGNED_OUT_NOTE);
+        }
+        if status != 0 {
+            return ServiceStatus {
+                state: State::Unavailable,
+                ..base
+            }
+            .with_note(format!("grok.com answered with gRPC status {status}."));
+        }
+    }
+    match read_grok_credits(&bytes, now) {
+        GrokCredits::Quota(w) => ServiceStatus {
             state: State::Connected,
             plan: Some("SuperGrok".into()),
             windows: vec![w],
             ..base
         },
-        None => ServiceStatus {
-            state: State::Unavailable,
+        GrokCredits::Empty => ServiceStatus {
+            state: State::Changed,
             ..base
         }
-        .with_note("grok.com returned a response we don't understand yet."),
+        .with_note(GROK_WEB_EMPTY_NOTE),
+        GrokCredits::Unreadable => ServiceStatus {
+            state: State::Changed,
+            ..base
+        }
+        .with_note(GROK_WEB_SHAPE_NOTE),
     }
 }
 
@@ -2098,10 +2165,49 @@ fn scan_proto(b: &[u8], path: &mut Vec<u64>, out: &mut ProtoScan, depth: u32) ->
     true
 }
 
-/// `GetGrokCreditsConfig` response (gRPC-web frames or a raw message):
-/// the used percent is the float at field path …/1 closest to the root
-/// (normally `[1, 1]`), the reset the timestamp at `[1, 5, 1]`.
-fn parse_grok_billing_proto(data: &[u8], now: i64) -> Option<UsageWindow> {
+/// The gRPC status carried by a response's trailer frame, when it has one.
+/// A webview cannot read trailers as headers, so `grpc-status` reaches this app
+/// only inside the body: a 0x80-flagged frame holding `grpc-status: 16` text.
+fn grpc_trailer_status(data: &[u8]) -> Option<i64> {
+    let mut i = 0;
+    while i + 5 <= data.len() {
+        let flags = data[i];
+        let len = u32::from_be_bytes([data[i + 1], data[i + 2], data[i + 3], data[i + 4]]) as usize;
+        let (start, end) = (i + 5, i + 5 + len);
+        if end > data.len() {
+            return None;
+        }
+        if flags == 0x80 {
+            let text = String::from_utf8_lossy(&data[start..end]);
+            for line in text.lines() {
+                if let Some(v) = line.trim().strip_prefix("grpc-status:") {
+                    return v.trim().parse().ok();
+                }
+            }
+        }
+        i = end;
+    }
+    None
+}
+
+/// What a `GetGrokCreditsConfig` body turned out to be. The three cases are
+/// deliberately not folded into an `Option`: "nothing came back" and "this app
+/// cannot read what came back" are different news for the user.
+#[derive(Debug)]
+enum GrokCredits {
+    /// The numbers, read from a body whose shape this app still knows.
+    Quota(UsageWindow),
+    /// A well-formed gRPC-web answer carrying no message at all.
+    Empty,
+    /// Bytes this app cannot read: the framing or the message shape has moved.
+    Unreadable,
+}
+
+/// Reads a `GetGrokCreditsConfig` response: gRPC-web frames, or a bare
+/// protobuf message (older captures). The used percent is the float at field
+/// path .../1 closest to the root (normally `[1, 1]`), the reset the timestamp
+/// at `[1, 5, 1]`.
+fn read_grok_credits(data: &[u8], now: i64) -> GrokCredits {
     let mut payloads: Vec<&[u8]> = Vec::new();
     let mut i = 0;
     let mut framed = true;
@@ -2126,12 +2232,25 @@ fn parse_grok_billing_proto(data: &[u8], now: i64) -> Option<UsageWindow> {
         }
         i = end;
     }
-    if !framed || payloads.is_empty() {
+    if framed && payloads.is_empty() {
+        // A proper envelope with no data frame in it: the call succeeded and
+        // carried nothing. Not a schema change.
+        return GrokCredits::Empty;
+    }
+    if !framed {
+        // Not a gRPC-web body at all: try the whole thing as one message.
         payloads = vec![data];
+    }
+    if payloads.iter().all(|p| p.is_empty()) {
+        return GrokCredits::Empty;
     }
     let mut scan = ProtoScan::default();
     for p in payloads {
-        scan_proto(p, &mut Vec::new(), &mut scan, 0);
+        if !scan_proto(p, &mut Vec::new(), &mut scan, 0) {
+            // Bytes that are not a protobuf message either: a JSON error body,
+            // an HTML page, whatever the endpoint says now.
+            return GrokCredits::Unreadable;
+        }
     }
     let percent = scan
         .fixed32
@@ -2156,14 +2275,16 @@ fn parse_grok_billing_proto(data: &[u8], now: i64) -> Option<UsageWindow> {
         (Some(p), _) => p,
         // A current period but no usage scalar: nothing used yet (proto3 omits 0).
         (None, Some(_)) if scan.fixed32.is_empty() => 0.0,
-        _ => return None,
+        // A message, but with neither number where they used to be: the shape
+        // moved under us.
+        _ => return GrokCredits::Unreadable,
     };
     let secs = reset.map(|r| r - now);
     let kind = match secs {
         Some(s) if s <= 8 * 86_400 => "weekly",
         _ => "period",
     };
-    Some(UsageWindow {
+    GrokCredits::Quota(UsageWindow {
         kind,
         used_percent: used.clamp(0.0, 100.0),
         resets_at: reset,
@@ -2250,60 +2371,183 @@ mod tests {
         assert_eq!(w[1].used_percent, 26.0);
     }
 
-    #[test]
-    fn grok_proto() {
-        // [1]{ [1] float 37.5, [5]{ [1] varint 1795672800 } }
-        let mut inner = vec![0x0d];
-        inner.extend_from_slice(&37.5f32.to_le_bytes());
-        let mut ts = vec![0x08];
-        let mut v: u64 = 1_795_672_800;
+    // ------------------------------------------------ Grok credits fixtures
+    //
+    // Bytes shaped the way grok.com's own web bundle sends them: a
+    // `GetGrokCreditsConfigResponse` in one data frame, then a trailer frame.
+    // Written out here rather than copied from a live session: they are public
+    // traffic shapes, and a test fixture should not carry anyone's account.
+
+    /// A protobuf varint.
+    fn varint(mut v: u64) -> Vec<u8> {
+        let mut out = Vec::new();
         loop {
             let b = (v & 0x7f) as u8;
             v >>= 7;
             if v == 0 {
-                ts.push(b);
-                break;
-            } else {
-                ts.push(b | 0x80)
+                out.push(b);
+                return out;
             }
+            out.push(b | 0x80);
         }
-        inner.push(0x2a);
-        inner.push(ts.len() as u8);
-        inner.extend(ts);
-        let mut msg = vec![0x0a, inner.len() as u8];
-        msg.extend(inner);
-        let mut frame = vec![0, 0, 0, 0, msg.len() as u8];
-        frame.extend(&msg);
-        frame.extend([0x80, 0, 0, 0, 0x0f]);
-        frame.extend(b"grpc-status:0\r\n");
-        let w = parse_grok_billing_proto(&frame, 1_795_200_000).unwrap();
-        assert_eq!(w.used_percent, 37.5);
-        assert_eq!(w.resets_at, Some(1_795_672_800));
-        assert_eq!(w.kind, "weekly");
-        // through the report path, base64-encoded
-        let b64 = {
-            const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-            let mut s = String::new();
-            for c in frame.chunks(3) {
-                let n = (c[0] as u32) << 16
-                    | (*c.get(1).unwrap_or(&0) as u32) << 8
-                    | *c.get(2).unwrap_or(&0) as u32;
-                for k in 0..4 {
-                    if k <= c.len() {
-                        s.push(T[(n >> (18 - 6 * k) & 63) as usize] as char)
-                    } else {
-                        s.push('=')
-                    }
+    }
+
+    /// A length-delimited field (wire type 2).
+    fn field_len(field: u32, body: &[u8]) -> Vec<u8> {
+        let mut out = varint(((field as u64) << 3) | 2);
+        out.extend(varint(body.len() as u64));
+        out.extend_from_slice(body);
+        out
+    }
+
+    /// A varint field (wire type 0) — a timestamp.
+    fn field_varint(field: u32, v: u64) -> Vec<u8> {
+        let mut out = varint((field as u64) << 3);
+        out.extend(varint(v));
+        out
+    }
+
+    /// A float field (wire type 5): where the usage percentage lives today.
+    fn field_float(field: u32, v: f32) -> Vec<u8> {
+        let mut out = varint(((field as u64) << 3) | 5);
+        out.extend_from_slice(&v.to_le_bytes());
+        out
+    }
+
+    /// One gRPC-web frame: a flag byte (0x00 data, 0x80 trailer) and the
+    /// message length as a big-endian u32.
+    fn frame(flags: u8, body: &[u8]) -> Vec<u8> {
+        let mut out = vec![flags];
+        out.extend_from_slice(&(body.len() as u32).to_be_bytes());
+        out.extend_from_slice(body);
+        out
+    }
+
+    /// `GetGrokCreditsConfigResponse { config: { usage_percent, current_period
+    /// { reset_at } } }`, framed like a real answer.
+    fn grok_credits_response(percent: f32, reset_at: Option<u64>) -> Vec<u8> {
+        let mut config = field_float(1, percent);
+        if let Some(t) = reset_at {
+            config.extend(field_len(5, &field_varint(1, t)));
+        }
+        let mut body = frame(0, &field_len(1, &config));
+        body.extend(frame(0x80, b"grpc-status:0\r\n"));
+        body
+    }
+
+    /// Standard base64, the way the page encodes the bytes it sends back.
+    fn base64(bytes: &[u8]) -> String {
+        const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut s = String::new();
+        for c in bytes.chunks(3) {
+            let n = (c[0] as u32) << 16
+                | (*c.get(1).unwrap_or(&0) as u32) << 8
+                | *c.get(2).unwrap_or(&0) as u32;
+            for k in 0..4 {
+                if k <= c.len() {
+                    s.push(T[(n >> (18 - 6 * k) & 63) as usize] as char)
+                } else {
+                    s.push('=')
                 }
             }
-            s
-        };
-        let st = grok_from_web(&serde_json::json!({"b64": b64, "grpc": "0"}), 1_795_200_000);
+        }
+        s
+    }
+
+    #[test]
+    fn grok_web_reads_a_real_credits_response() {
+        let body = grok_credits_response(37.5, Some(1_795_672_800));
+        let st = grok_from_web(
+            &json!({"b64": base64(&body), "grpc": "0", "status": 200}),
+            1_795_200_000,
+        );
         assert_eq!(st.state, State::Connected);
         assert_eq!(st.source, "web");
+        assert_eq!(st.plan.as_deref(), Some("SuperGrok"));
+        assert_eq!(st.windows.len(), 1);
         assert_eq!(st.windows[0].used_percent, 37.5);
-        let st = grok_from_web(&serde_json::json!({"auth": false}), 0);
+        assert_eq!(st.windows[0].resets_at, Some(1_795_672_800));
+        assert_eq!(st.windows[0].kind, "weekly");
+        assert_eq!(st.note, None);
+    }
+
+    #[test]
+    fn grok_web_reads_a_response_with_nothing_used_yet() {
+        // proto3 leaves a 0.0 float out of the message; the period is still
+        // there, so this is "nothing used", not "cannot read".
+        let mut config = Vec::new();
+        config.extend(field_len(5, &field_varint(1, 1_795_672_800)));
+        let body = frame(0, &field_len(1, &config));
+        let st = grok_from_web(&json!({"b64": base64(&body)}), 1_795_200_000);
+        assert_eq!(st.state, State::Connected);
+        assert_eq!(st.windows[0].used_percent, 0.0);
+    }
+
+    #[test]
+    fn grok_web_tells_a_signed_out_session_from_a_changed_api() {
+        // The page itself saw the 401/403: signed out.
+        let st = grok_from_web(&json!({"auth": false}), 0);
         assert_eq!(st.state, State::Expired);
+
+        // The status only inside the trailer frame — which is how a webview
+        // learns it, since trailers are not readable as headers.
+        let mut refused = Vec::new();
+        refused.extend(frame(0x80, b"grpc-status:16\r\n"));
+        let st = grok_from_web(&json!({"b64": base64(&refused), "grpc": "0"}), 0);
+        assert_eq!(st.state, State::Expired);
+        assert!(st.note.unwrap().contains("sign-in"));
+
+        // A server-side failure is not the account's either: retried shortly.
+        let mut broken = Vec::new();
+        broken.extend(frame(0x80, b"grpc-status:13\r\n"));
+        let st = grok_from_web(&json!({"b64": base64(&broken), "grpc": "0"}), 0);
+        assert_eq!(st.state, State::Unavailable);
+
+        // JSON where protobuf used to be: the API moved, and that must never
+        // read as "not connected".
+        let body = br#"{"error":{"code":404,"message":"Not Found"}}"#;
+        let st = grok_from_web(&json!({"b64": base64(body), "grpc": "0"}), 0);
+        assert_eq!(st.state, State::Changed);
+        assert!(st.note.unwrap().contains("API has probably changed"));
+
+        // A 200 carrying nothing at all.
+        let st = grok_from_web(&json!({"b64": "", "grpc": "0"}), 0);
+        assert_eq!(st.state, State::Changed);
+
+        // The request never got an answer.
+        let st = grok_from_web(&json!({"error": "HTTP 502"}), 0);
+        assert_eq!(st.state, State::Unavailable);
+    }
+
+    #[test]
+    fn grok_web_calls_moved_fields_a_changed_api() {
+        // A message that parses, but with the numbers in other fields: the
+        // shape changed under us.
+        let config = field_float(3, 42.0);
+        let body = frame(0, &field_len(1, &config));
+        let st = grok_from_web(&json!({"b64": base64(&body)}), 1_795_200_000);
+        assert_eq!(st.state, State::Changed);
+
+        // Bytes that are not protobuf at all.
+        let st = grok_from_web(&json!({"b64": base64(b"<html>nope</html>")}), 0);
+        assert_eq!(st.state, State::Changed);
+    }
+
+    #[test]
+    fn grok_credits_reads_a_bare_message_and_an_empty_envelope() {
+        // Older captures are a bare message with no gRPC-web frames.
+        let mut config = field_float(1, 12.5);
+        config.extend(field_len(5, &field_varint(1, 1_795_672_800)));
+        let bare = field_len(1, &config);
+        match read_grok_credits(&bare, 1_795_200_000) {
+            GrokCredits::Quota(w) => assert_eq!(w.used_percent, 12.5),
+            other => panic!("a bare message should read: {other:?}"),
+        }
+        // A framed answer with no data frame in it.
+        match read_grok_credits(&frame(0x80, b"grpc-status:0\r\n"), 0) {
+            GrokCredits::Empty => {}
+            other => panic!("an empty envelope is empty, not unreadable: {other:?}"),
+        }
     }
 
     #[test]
@@ -2325,6 +2569,18 @@ mod tests {
             claude_from_web(&serde_json::json!({"auth": false})).state,
             State::Expired
         );
+    }
+
+    #[test]
+    fn claude_web_calls_an_unreadable_answer_a_changed_api() {
+        // Signed in and answered, but the usage object no longer holds the
+        // windows this app reads: the login is fine, the app is behind.
+        let st = claude_from_web(&json!({
+            "capabilities": ["chat"],
+            "usage": {"used_something_else": 1}
+        }));
+        assert_eq!(st.state, State::Changed);
+        assert!(st.note.unwrap().contains("API has probably changed"));
     }
 
     #[test]
@@ -2787,6 +3043,15 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&State::NotConnected).unwrap(),
             "\"not_connected\""
+        );
+        // `src/main.js` reads these strings: a rename has to reach the UI.
+        assert_eq!(
+            serde_json::to_string(&State::Changed).unwrap(),
+            "\"changed\""
+        );
+        assert_eq!(
+            serde_json::to_string(&State::Unavailable).unwrap(),
+            "\"unavailable\""
         );
     }
 }
