@@ -1182,3 +1182,51 @@ fn store_anchor(app: &AppHandle, rect: &Rect) {
     let size = rect.size.to_physical::<f64>(scale);
     *app.state::<AppState>().anchor.lock().unwrap() = Some((pos.x, pos.y, size.width, size.height));
 }
+
+#[cfg(test)]
+mod tests {
+    //! `cargo test` builds this binary's own tests on the CI runners, so the one
+    //! piece below — the note the `Moved` handler reads on the UI thread — is
+    //! exercised on Windows and macOS and not only on a developer's machine.
+    use ai_usage_core::edge::MoveNote;
+
+    #[test]
+    fn our_own_move_is_claimed_once_and_a_drag_is_not() {
+        let note = MoveNote::new();
+        assert!(!note.claim(10.0, 10.0), "nothing announced yet");
+        note.note(120.0, 240.0);
+        assert!(note.claim(120.0, 240.0), "the move we asked for");
+        assert!(!note.claim(120.0, 240.0), "and only that one event");
+        assert!(!note.claim(300.0, 400.0), "a drag of the user's is theirs");
+    }
+
+    /// The freeze this replaced: the handler used to lock a `Mutex` here and,
+    /// on a match, lock it again on the same thread. A claim that could block
+    /// would hang this test rather than fail it, so a timeout is what is
+    /// asserted — this is the regression the lock-free note exists for.
+    #[test]
+    fn claiming_never_waits_for_the_thread_that_moves_the_window() {
+        use std::sync::mpsc;
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        let note = Arc::new(MoveNote::new());
+        let (tx, rx) = mpsc::channel();
+        let moving = note.clone();
+        std::thread::spawn(move || {
+            for i in 0..10_000 {
+                moving.note(10.0, i as f64);
+                let _ = moving.claim(10.0, i as f64);
+            }
+            let _ = tx.send(());
+        });
+        for i in 0..10_000 {
+            note.note(i as f64, 20.0);
+            let _ = note.claim(i as f64, 20.0);
+        }
+        assert!(
+            rx.recv_timeout(Duration::from_secs(10)).is_ok(),
+            "a claim blocked the thread that moves the window"
+        );
+    }
+}
