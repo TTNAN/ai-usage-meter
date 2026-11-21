@@ -6,6 +6,8 @@
 
 **Your Claude, ChatGPT (Codex), Grok, Gemini and GitHub Copilot limits — live in the menu bar.**
 
+One app, two shapes: the **rings popover** for the full picture, the **compact dock bar** when you only want a corner of the screen — switch anytime, with the same settings and colours on both.
+
 [中文](./README.md) · English
 
 [![Build](https://github.com/TTNAN/ai-usage-meter/actions/workflows/build.yml/badge.svg)](https://github.com/TTNAN/ai-usage-meter/actions/workflows/build.yml)
@@ -15,7 +17,12 @@
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/hero-light.png" />
-  <img src="docs/hero.png" alt="AI Usage Meter menu-bar popover" width="880" />
+  <img src="docs/hero.png" alt="The AI Usage Meter rings popover" width="880" />
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/dock-light.png" />
+  <img src="docs/dock.png" alt="The compact dock bar: one tile per service" width="520" />
 </picture>
 
 </div>
@@ -24,6 +31,7 @@ Tired of hitting "usage limit reached" mid-task? AI Usage Meter puts every 5-hou
 
 ## Highlights
 
+- **Two shapes, one app** — a switch in the footer moves between **Rings** and **Dock** whenever you like. The dock bar is 496×138 with five services and one 88 px tile each: the service's own icon, a big percentage, and a hairline progress bar. Reset times and the ETA appear on hover, the tiles narrow as services drop out (304 px for three), and both views share the same settings and colours.
 - **See the tightest limit first** — concentric rings and one big number tell you which quota runs out first and when it resets. Connect three services and you get the classic three rings; connect four or five and the gauge adds rings and thins the stroke, so no service is left out.
 - **The icon is the gauge** — three tiny battery bars show the three tightest services (three is what actually reads at 16 px); on macOS you can show the percentage right next to it.
 - **Every window, not just one** — Claude 5-hour / weekly (plus separate Opus and Sonnet limits), Codex 5-hour / weekly in ChatGPT, Grok's billing period, Gemini's Pro / Flash allowances, Copilot's premium requests and chat, each with its own countdown.
@@ -120,12 +128,15 @@ You can work on the UI without Rust: serve `src/` with any static server and it 
 
 ```bash
 python3 -m http.server -d src 8000
-# http://localhost:8000/               demo data (with trends and ETAs)
-# http://localhost:8000/?state=trend   same, to look at the sparklines and ETAs
-# http://localhost:8000/?state=empty    first run
-# http://localhost:8000/?state=mixed    mixed (not connected / expired)
-# http://localhost:8000/?state=four     four connected (four rings)
-# http://localhost:8000/?view=settings  settings
+# http://localhost:8000/                     demo data (with trends and ETAs)
+# http://localhost:8000/?view=dock           the compact dock bar, five tiles
+# http://localhost:8000/?view=dock&state=three&hide=1   a three-service dock bar
+# http://localhost:8000/?state=trend         same, to look at the sparklines and ETAs
+# http://localhost:8000/?state=empty          first run
+# http://localhost:8000/?state=mixed          mixed (not connected / expired)
+# http://localhost:8000/?state=four           four connected (four rings)
+# http://localhost:8000/?view=settings        settings
+# add &lang=zh or &lang=en to force the UI language
 ```
 
 The desktop app needs Rust stable:
@@ -137,7 +148,7 @@ cargo tauri build                  # package
 AI_USAGE_METER_MOCK=1 cargo tauri dev   # run with demo data
 ```
 
-The backend comes in two pieces: what is this app's alone in `src-tauri/src/` (tray, window, commands, poller, web sign-in), and the shared core in `src-tauri/crates/ai-usage-core/` (the five providers, low-quota rules, the tray icon, the edge maths). Each project keeps a byte-identical copy of the core so that it still builds from its own zip; `./sync-core.sh` copies this project's copy into its sibling and `./sync-core.sh --check` only compares.
+The backend comes in two pieces: what is this app's alone in `src-tauri/src/` (tray, window, commands, poller, web sign-in), and the Tauri-free core in `src-tauri/crates/ai-usage-core/` (the five providers, low-quota rules, the tray icon, the edge maths). Both views share the one backend, and the window takes its size from the page (`set_window_size`), which is how the rings popover and the dock bar live in the same native window.
 
 ```bash
 cd src-tauri/crates/ai-usage-core && cargo test   # core unit tests
@@ -152,7 +163,7 @@ Want another service (Cursor, Windsurf…)? Open an [issue](https://github.com/T
 - [x] More services: Gemini CLI / Antigravity, GitHub Copilot
 - [x] Usage trend sparkline and a burn-rate ETA
 - [x] A global shortcut (`⌘⇧U` / `Ctrl+Shift+U`)
-- [x] One backend core shared with the Dock edition (`ai-usage-core`)
+- [x] The Dock edition folded into one app: rings and dock views (0.7.0)
 - [ ] More services: Cursor, Windsurf
 - [ ] Linux tray
 - [ ] Signed and notarised macOS builds

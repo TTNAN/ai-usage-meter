@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <main class="panel" id="panel" data-tauri-drag-region>
+  <main class="panel" id="panel" data-view="concentric" data-tauri-drag-region>
     <!-- Header -->
     <header class="top" data-tauri-drag-region>
       <div class="brand" data-tauri-drag-region>
@@ -31,13 +31,40 @@
     </header>
 
     <div class="views" id="views">
-      <!-- Usage view -->
+      <!-- Concentric view: the classic rings and rows -->
       <section class="view view-usage" id="view-usage">
         <div class="hero" id="hero" data-tauri-drag-region>
           <svg class="rings" id="rings" viewBox="0 0 120 120" aria-hidden="true"></svg>
           <div class="hero-copy" id="hero-copy" data-tauri-drag-region></div>
         </div>
         <ul class="services" id="services"></ul>
+      </section>
+
+      <!-- Compact Dock view: one small tile per service, nothing else -->
+      <section class="view view-dock" id="view-dock" hidden>
+        <div class="dock" id="dock" data-tauri-drag-region></div>
+        <footer class="dock-foot" data-tauri-drag-region>
+          <div class="seg view-seg" role="group" aria-label="View mode">
+            <button type="button" data-view="concentric" data-i18n="viewRings">Rings</button>
+            <button type="button" data-view="dock" data-i18n="viewDock">Dock</button>
+          </div>
+          <div class="seg" data-setting="mode" role="group">
+            <button type="button" data-value="used" data-i18n="optUsed">Used</button>
+            <button type="button" data-value="left" data-i18n="optLeft">Left</button>
+          </div>
+          <span class="dock-detail" id="dock-detail"></span>
+          <div class="dock-actions">
+            <button class="dock-btn" id="dock-edge" type="button" data-i18n-title="dockEdge">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 3.2v9.6M6.8 5.6 4.4 8l2.4 2.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.2 2.6v10.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+            <button class="dock-btn" id="dock-settings" type="button" data-i18n-title="settings">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5h6.5M12 5h1.5M2.5 11H4M7 11h6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10.5" cy="5" r="1.6" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="5.5" cy="11" r="1.6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+            </button>
+            <button class="dock-btn" id="dock-refresh" type="button" data-i18n-title="refresh">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.2 8a5.2 5.2 0 1 1-1.52-3.68M13.2 2.6v2.8h-2.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </footer>
       </section>
 
       <!-- Settings view -->
@@ -140,11 +167,15 @@
     </div>
 
     <footer class="bottom" data-tauri-drag-region>
+      <div class="seg view-seg" role="group" aria-label="View mode">
+        <button type="button" data-view="concentric" data-i18n="viewRings">Rings</button>
+        <button type="button" data-view="dock" data-i18n="viewDock">Dock</button>
+      </div>
+      <span class="demo-chip" id="demo-chip" hidden data-i18n="demo">Demo data</span>
       <span class="privacy-chip">
         <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.2" y="7" width="9.6" height="6.8" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.4 7V5.2a2.6 2.6 0 0 1 5.2 0V7" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
         <span data-i18n="local">On-device · read-only</span>
       </span>
-      <span class="demo-chip" id="demo-chip" hidden data-i18n="demo">Demo data</span>
       <span class="version" id="version"></span>
     </footer>
   </main>

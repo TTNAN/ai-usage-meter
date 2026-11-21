@@ -6,6 +6,8 @@
 
 **Claude、ChatGPT（Codex）、Grok、Gemini、GitHub Copilot 的订阅额度，常驻菜单栏，一眼看清。**
 
+同一个应用，两种形态：**环图弹窗**看全局，**紧凑 Dock 条**只占屏幕一角——随时切换，设置和配色两边通用。
+
 中文 · [English](./README_EN.md)
 
 [![Build](https://github.com/TTNAN/ai-usage-meter/actions/workflows/build.yml/badge.svg)](https://github.com/TTNAN/ai-usage-meter/actions/workflows/build.yml)
@@ -15,7 +17,12 @@
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/hero-light.png" />
-  <img src="docs/hero.png" alt="AI Usage Meter 菜单栏弹窗" width="880" />
+  <img src="docs/hero.png" alt="AI Usage Meter 菜单栏弹窗（环图视图）" width="880" />
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/dock-light.png" />
+  <img src="docs/dock.png" alt="紧凑 Dock 视图：一服务一格" width="520" />
 </picture>
 
 </div>
@@ -24,6 +31,7 @@
 
 ## 亮点
 
+- **两种形态，一个应用** — 底栏一行「环图 / Dock」随时换：环图弹窗把每个窗口、每条倒计时摊开；Dock 条只有 496×138（五个服务时），一格一个服务——官方图标、大号百分比和一条细进度条，悬停才显示重置时间与预计用完，平时不占地方。格子会跟着显示的服务数收窄，三家就只占 304px。
 - **一眼看清最紧张的那一个** — 同心环总览 + 大号数字，直接告诉你哪家额度最先见底、多久后重置。连上几家就画几环：3 家是经典三环，4–5 家会自动加密环数、收细描边，一家都不落下。
 - **菜单栏图标本身就是仪表** — 三根小电量条实时显示额度最紧的三个服务（16px 的图标放三根最清楚）；macOS 上还可以在图标旁直接显示百分比。
 - **每个窗口都看得到** — Claude 的 5 小时 / 本周（以及 Opus、Sonnet 单独额度）、ChatGPT 里 Codex 的 5 小时 / 本周、Grok 的计费周期、Gemini 的 Pro / Flash 额度、Copilot 的高级请求和对话额度，各自带倒计时。
@@ -120,12 +128,15 @@ xattr -cr "/Applications/AI Usage Meter.app"
 
 ```bash
 python3 -m http.server -d src 8000
-# http://localhost:8000/               默认：五家演示数据（含走势与预计用完）
-# http://localhost:8000/?state=trend   同上，重点看迷你走势与「约多久用完」
-# http://localhost:8000/?state=empty    首次启动
-# http://localhost:8000/?state=mixed    混合状态（未连接 / 登录过期）
-# http://localhost:8000/?state=four     只连四家（四环总览）
-# http://localhost:8000/?view=settings  设置页（含服务配色与全局快捷键）
+# http://localhost:8000/                  默认：五家演示数据（含走势与预计用完）
+# http://localhost:8000/?view=dock        紧凑 Dock 视图（五个格子）
+# http://localhost:8000/?view=dock&state=three&hide=1   三家服务的 Dock 条
+# http://localhost:8000/?state=trend      同上，重点看迷你走势与「约多久用完」
+# http://localhost:8000/?state=empty       首次启动
+# http://localhost:8000/?state=mixed       混合状态（未连接 / 登录过期）
+# http://localhost:8000/?state=four        只连四家（四环总览）
+# http://localhost:8000/?view=settings     设置页（含服务配色与全局快捷键）
+# 加 &lang=zh 或 &lang=en 可强制界面语言
 ```
 
 构建桌面应用需要 Rust stable：
@@ -137,7 +148,7 @@ cargo tauri build                  # 打包
 AI_USAGE_METER_MOCK=1 cargo tauri dev   # 用演示数据运行
 ```
 
-后端分成两部分：每个应用自己的 `src-tauri/src/`（托盘、窗口、命令、轮询、网页登录），和两边共用的核心库 `src-tauri/crates/ai-usage-core/`（五家 provider、低额度提醒规则、托盘图标、贴边吸附）。核心库在每个项目里各存一份完全相同的副本，项目才能单独打包；改完用 `./sync-core.sh` 同步、`./sync-core.sh --check` 校验。
+后端分成两部分：应用自己的 `src-tauri/src/`（托盘、窗口、命令、轮询、网页登录），和不依赖 Tauri 的核心库 `src-tauri/crates/ai-usage-core/`（五家 provider、低额度提醒规则、托盘图标、贴边吸附）。两个视图共用同一套后端；窗口尺寸也由页面量好上报（`set_window_size`），所以环图和 Dock 条能共用一个原生窗口。
 
 ```bash
 cd src-tauri/crates/ai-usage-core && cargo test   # 核心库单元测试
@@ -152,7 +163,7 @@ cd src-tauri && cargo test                        # 应用层（需要 Tauri 的
 - [x] 更多服务：Gemini CLI / Antigravity、GitHub Copilot
 - [x] 用量走势迷你折线与「预计多久用完」
 - [x] 全局快捷键（`⌘⇧U` / `Ctrl+Shift+U`）
-- [x] 与 Dock 版共用一套后端核心（`ai-usage-core`）
+- [x] 把 Dock 版并进同一个应用：环图 / Dock 双形态（0.7.0）
 - [ ] 更多服务：Cursor、Windsurf
 - [ ] Linux 托盘
 - [ ] macOS 签名与公证

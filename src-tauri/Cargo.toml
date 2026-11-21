@@ -1,7 +1,7 @@
 [package]
 name = "ai-usage-meter"
-version = "0.6.1"
-description = "See how much Claude, ChatGPT (Codex), Grok, Gemini and GitHub Copilot quota you have left — right from your menu bar / system tray."
+version = "0.7.0"
+description = "See how much Claude, ChatGPT (Codex), Grok, Gemini and GitHub Copilot quota you have left — as a rings popover or a compact dock bar, right from your menu bar / system tray."
 authors = ["TTNAN"]
 license = "MIT"
 repository = "https://github.com/TTNAN/ai-usage-meter"

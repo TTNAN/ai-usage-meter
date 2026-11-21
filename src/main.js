@@ -57,6 +57,11 @@ const params = new URLSearchParams(location.search);
 const STRINGS = {
   en: {
     title: "AI Usage",
+    viewRings: "Rings",
+    viewDock: "Dock",
+    dockEdge: "Tuck at screen edge",
+    notConnectedShort: "Not connected",
+    expiredShort: "Expired",
     refresh: "Refresh (⌘R)",
     settings: "Settings",
     showAs: "Show numbers as",
@@ -148,6 +153,11 @@ const STRINGS = {
   },
   zh: {
     title: "AI 用量",
+    viewRings: "环图",
+    viewDock: "Dock",
+    dockEdge: "贴边自动收起",
+    notConnectedShort: "未连接",
+    expiredShort: "已过期",
     refresh: "刷新 (⌘R)",
     settings: "设置",
     showAs: "数字显示为",
@@ -249,6 +259,9 @@ function normalizeShortcut(v) {
 }
 
 const settings = {
+  // Which shape the window takes: the rings popover, or the compact dock bar.
+  // Switched from the footer of either view and remembered across launches.
+  view: localStorage.getItem("view") || "concentric",
   mode: localStorage.getItem("mode") || "left",
   tray: localStorage.getItem("tray") || "icon",
   lang: localStorage.getItem("lang") || "auto",
@@ -402,7 +415,7 @@ function demoStatus(kind) {
     { id: "codex", label: "ChatGPT", state: "mock", plan: "Plus",
       ...(kind === "mixed" ? { source: "session", fetchedAt: now - 12 * 60 } : { fetchedAt: now }),
       windows: [w("session", 37, 58 * 60, 18000), w("weekly", 18, 5 * 86400, 604800)] },
-    kind === "mixed"
+    kind === "mixed" || kind === "three"
       ? { id: "grok", label: "Grok", state: "not_connected", plan: null, windows: [], fetchedAt: now }
       : { id: "grok", label: "Grok", state: "mock", plan: "SuperGrok", fetchedAt: now,
           windows: [w("weekly", 87, 4 * 86400 + 2 * 3600, 604800)] },
@@ -411,7 +424,7 @@ function demoStatus(kind) {
     kind === "mixed"
       ? { id: "copilot", label: "Copilot", state: "expired", plan: "Individual", windows: [], fetchedAt: now,
           note: "Login expired" }
-      : kind === "four"
+      : kind === "four" || kind === "three"
         ? { id: "copilot", label: "Copilot", state: "not_connected", plan: null, windows: [], fetchedAt: now }
         : { id: "copilot", label: "Copilot", state: "mock", plan: "Individual", fetchedAt: now,
             windows: [w("premium", 61, 11 * 86400, 0), w("chat", 23, 11 * 86400, 0)] },
@@ -729,6 +742,84 @@ function visibleRows() {
   return live ? rows.filter((s) => s.state !== "not_connected") : rows;
 }
 
+// --------------------------------------------------------------- dock
+// The compact view: one 88 px tile per service. Everything the rings view
+// spells out in a row — the binding window, when it resets, where it is going
+// — stays one hover away (the tooltip and the strip under the bar), so the
+// tiles themselves are only the icon, the number and its one-word label.
+
+function dockLabel(s) {
+  if (!hasNumbers(s)) {
+    if (s.state === "loading") return "…";
+    return s.state === "expired" ? t("expiredShort") : t("notConnectedShort");
+  }
+  return t(settings.mode === "used" ? "used" : "left");
+}
+
+/** The tile's tooltip: name and plan, the binding window, the reset, the ETA. */
+function dockTitle(s) {
+  const head = s.plan ? `${s.label} · ${s.plan}` : s.label;
+  if (!hasNumbers(s)) {
+    if (s.state === "loading") return `${head}\n${t("loading")}`;
+    const why =
+      s.state === "expired" ? t("expiredShort")
+      : s.state === "unavailable" ? t("unavailable")(s.label)
+      : t("notConnected")(s.id);
+    return `${head}\n${why}`;
+  }
+  const w = headline(s);
+  const lines = [
+    head,
+    `${dockLabel(s)} ${shown(peakUsed(s)).toFixed(0)}% · ${t("win")[w.kind] || w.kind}`,
+    resetSentence(w.resetsAt),
+  ];
+  const eta = etaSeconds(s);
+  if (eta != null) lines.push(etaText(eta));
+  return lines.filter(Boolean).join("\n");
+}
+
+function dockTile(s) {
+  const live = hasNumbers(s);
+  const left = live ? 100 - peakUsed(s) : null;
+  const cls = ["dtile"];
+  if (!live) cls.push("off");
+  if (left != null && left <= 2) cls.push("out");
+  const value = live ? Math.max(0, Math.min(100, Math.round(shown(peakUsed(s))))) : null;
+  const aria = live ? `${s.label} ${value}% ${dockLabel(s)}` : `${s.label} ${dockLabel(s)}`;
+  return `<button class="${cls.join(" ")}" type="button" data-id="${s.id}"
+      style="--accent: ${accent(s.id)}" title="${esc(dockTitle(s))}" aria-label="${esc(aria)}">
+    <span class="dicon">${tileGlyph(s.id)}</span>
+    <span class="dpct">${live ? `<b>${value}</b><small>%</small>` : "<b>—</b>"}</span>
+    <span class="dlabel">${esc(dockLabel(s))}</span>
+    <span class="dbar"><i style="width:${value == null ? 0 : value}%"></i></span>
+  </button>`;
+}
+
+function renderDock() {
+  const dock = document.getElementById("dock");
+  if (!dock) return;
+  // Before the first reading the bar keeps its five places, so the window does
+  // not grow into them once the numbers land.
+  const rows = status.length
+    ? visibleRows()
+    : ORDER.map((id) => ({ id, label: LABEL[id], state: "loading", windows: [] }));
+  dock.innerHTML = rows.map(dockTile).join("");
+  document.getElementById("panel").dataset.count = String(rows.length);
+  dockDetail(null);
+}
+
+/**
+ * The strip under the bar repeats what the hovered tile's tooltip says, in one
+ * line — but only while there are enough tiles for the line to have room.
+ */
+function dockDetail(s) {
+  const el = document.getElementById("dock-detail");
+  if (!el) return;
+  const room = Number(document.getElementById("panel").dataset.count || 0) >= 4;
+  el.textContent = s ? dockTitle(s).split("\n").slice(1).join(" · ") : "";
+  el.classList.toggle("on", !!s && room);
+}
+
 function renderServices() {
   const ul = document.getElementById("services");
   if (!status.length) {
@@ -763,6 +854,7 @@ function render() {
   syncRings();
   renderRings();
   renderServices();
+  renderDock();
   document.getElementById("demo-chip").hidden = params.has("clean") || !status.some((s) => s.state === "mock");
   tick();
 }
@@ -808,7 +900,7 @@ function applyI18n() {
   document.documentElement.lang = lang() === "zh" ? "zh-CN" : "en";
   document.querySelectorAll("[data-i18n]").forEach((el) => (el.textContent = t(el.dataset.i18n)));
   document.querySelectorAll("[data-i18n-title]").forEach((el) => (el.title = t(el.dataset.i18nTitle)));
-  document.querySelectorAll(".seg").forEach((seg) => {
+  document.querySelectorAll(".seg[data-setting]").forEach((seg) => {
     seg.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.value === settings[seg.dataset.setting]));
   });
   renderAccounts();
@@ -816,6 +908,7 @@ function applyI18n() {
   renderColorRows();
   paintShortcutSeg();
   showShortcutState();
+  syncViewSegs();
   syncSettingsScroll();
 }
 
@@ -832,8 +925,8 @@ function setStatus(next) {
 async function refresh() {
   if (refreshing) return;
   refreshing = true;
-  const btn = document.getElementById("refresh");
-  btn.classList.add("spinning");
+  const buttons = [document.getElementById("refresh"), document.getElementById("dock-refresh")];
+  buttons.forEach((b) => b && b.classList.add("spinning"));
   const started = Date.now();
   try {
     if (PREVIEW) setStatus(demoStatus(params.get("state")));
@@ -842,7 +935,10 @@ async function refresh() {
     console.error(e);
   } finally {
     // Let the spinner complete a turn so a fast refresh still reads as one.
-    setTimeout(() => { btn.classList.remove("spinning"); refreshing = false; }, Math.max(0, 600 - (Date.now() - started)));
+    setTimeout(() => {
+      buttons.forEach((b) => b && b.classList.remove("spinning"));
+      refreshing = false;
+    }, Math.max(0, 600 - (Date.now() - started)));
   }
 }
 
@@ -860,9 +956,35 @@ function syncSettingsScroll() {
 }
 
 function showView(name) {
-  document.getElementById("view-usage").hidden = name !== "usage";
-  document.getElementById("view-settings").hidden = name !== "settings";
-  if (name === "settings") syncSettingsScroll();
+  // "usage" (and "main") mean whichever view this session is in; the settings
+  // drawer always takes the popover's own 372 px width, even from Dock view.
+  const settingsOpen = name === "settings";
+  const dock = settings.view === "dock";
+  document.getElementById("panel").classList.toggle("settings-open", settingsOpen);
+  document.getElementById("view-usage").hidden = settingsOpen || dock;
+  document.getElementById("view-dock").hidden = settingsOpen || !dock;
+  document.getElementById("view-settings").hidden = !settingsOpen;
+  if (settingsOpen) syncSettingsScroll();
+  fitWindow();
+}
+
+/** Switch between the rings popover and the compact dock bar. */
+function applyView() {
+  document.getElementById("panel").dataset.view = settings.view === "dock" ? "dock" : "concentric";
+  syncViewSegs();
+  showView(document.getElementById("view-settings").hidden ? "usage" : "settings");
+}
+
+function setView(view) {
+  settings.view = view === "dock" ? "dock" : "concentric";
+  localStorage.setItem("view", settings.view);
+  applyView();
+}
+
+function syncViewSegs() {
+  document.querySelectorAll(".view-seg button").forEach((b) =>
+    b.classList.toggle("on", b.dataset.view === settings.view)
+  );
 }
 
 /**
@@ -882,8 +1004,10 @@ function setEdgeState(edge, hidden) {
 
 function fitWindow() {
   if (PREVIEW) return;
-  const h = Math.ceil(document.getElementById("panel").getBoundingClientRect().height);
-  invoke("set_height", { height: h }).catch(() => {});
+  // Both shapes come from the page: 372 px of rings, or as wide as the dock
+  // bar's tiles. Rust clamps, resizes and keeps the window where it was.
+  const r = document.getElementById("panel").getBoundingClientRect();
+  invoke("set_window_size", { width: Math.ceil(r.width), height: Math.ceil(r.height) }).catch(() => {});
 }
 
 // ------------------------------------------------------------- shortcut
@@ -968,6 +1092,15 @@ async function boot() {
   const root = document.documentElement;
   let platform = /Mac/.test(navigator.platform) ? "macos" : "windows";
 
+  // The saved shape, chosen before anything is painted. In the browser
+  // preview `?view=dock` / `?view=settings` / `?hide=1` open it directly.
+  const wantView = params.get("view");
+  if (wantView === "dock" || wantView === "concentric") settings.view = wantView;
+  const wantLang = params.get("lang");
+  if (wantLang === "zh" || wantLang === "en") settings.lang = wantLang;
+  if (params.get("hide") === "1") settings.hideDisconnected = true;
+  document.getElementById("panel").dataset.view = settings.view;
+
   if (PREVIEW) {
     root.classList.add("preview");
     if (params.has("bare")) root.classList.add("bare");
@@ -981,7 +1114,7 @@ async function boot() {
     } catch (_) {}
     if (platform === "macos") root.classList.add("vibrancy");
   }
-  if (PREVIEW) document.getElementById("version").textContent = "v0.6.1";
+  if (PREVIEW) document.getElementById("version").textContent = "v0.7.0";
   root.classList.add("platform-" + platform);
   if (platform !== "macos") {
     document.getElementById("setting-tray").hidden = true;
@@ -995,12 +1128,13 @@ async function boot() {
   applyColors();
   applyShortcut();
   render();
+  applyView();
 
   // Size the native window to the panel, whatever its content.
   new ResizeObserver(fitWindow).observe(document.getElementById("panel"));
 
   // Settings controls.
-  document.querySelectorAll(".seg").forEach((seg) =>
+  document.querySelectorAll(".seg[data-setting]").forEach((seg) =>
     seg.addEventListener("click", (e) => {
       const b = e.target.closest("button");
       if (!b) return;
@@ -1044,9 +1178,51 @@ async function boot() {
   edgeSwitch.addEventListener("change", () => {
     settings.edgeTuck = edgeSwitch.checked;
     localStorage.setItem("edge-hide", settings.edgeTuck ? "1" : "0");
+    syncDockEdge();
     if (!PREVIEW) invoke("set_edge_enabled", { enabled: settings.edgeTuck }).catch(() => {});
   });
   if (!PREVIEW) invoke("set_edge_enabled", { enabled: settings.edgeTuck }).catch(() => {});
+
+  // The dock bar carries its own copies of the controls that matter there:
+  // view, Used/Left, edge tuck, settings, refresh. Same state, same storage.
+  const dockEdge = document.getElementById("dock-edge");
+  function syncDockEdge() {
+    dockEdge.classList.toggle("on", settings.edgeTuck);
+    dockEdge.setAttribute("aria-pressed", settings.edgeTuck ? "true" : "false");
+  }
+  syncDockEdge();
+  dockEdge.addEventListener("click", () => {
+    settings.edgeTuck = !settings.edgeTuck;
+    localStorage.setItem("edge-hide", settings.edgeTuck ? "1" : "0");
+    edgeSwitch.checked = settings.edgeTuck;
+    syncDockEdge();
+    if (!PREVIEW) invoke("set_edge_enabled", { enabled: settings.edgeTuck }).catch(() => {});
+  });
+  document.getElementById("dock-settings").addEventListener("click", () => showView("settings"));
+  document.getElementById("dock-refresh").addEventListener("click", refresh);
+  document.querySelectorAll(".view-seg").forEach((seg) =>
+    seg.addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (b) setView(b.dataset.view);
+    })
+  );
+  const dock = document.getElementById("dock");
+  dock.addEventListener("click", (e) => {
+    const tile = e.target.closest(".dtile");
+    if (!tile) return;
+    const s = status.find((x) => x.id === tile.dataset.id);
+    if (!s || hasNumbers(s)) return;
+    // A quiet tile is the way to fix it: web sign-in where the app can do it,
+    // and the drawer (which says how to connect) for the CLI-backed ones.
+    if (WEB_IDS.includes(s.id)) signIn(s.id);
+    else showView("settings");
+  });
+  dock.addEventListener("mouseover", (e) => {
+    const tile = e.target.closest(".dtile");
+    if (!tile) return;
+    dockDetail(status.find((x) => x.id === tile.dataset.id));
+  });
+  dock.addEventListener("mouseleave", () => dockDetail(null));
 
   // Colors: the native picker streams "input" while it is open, so the rings
   // and bars repaint as the user drags through it.
@@ -1121,7 +1297,7 @@ async function boot() {
   syncLang();
   TAURI.event.listen("usage", (e) => setStatus(e.payload));
   TAURI.event.listen("web-logins", (e) => { webLogins = e.payload || []; renderAccounts(); render(); });
-  TAURI.event.listen("popover-shown", () => { showView("usage"); renderRings(); });
+  TAURI.event.listen("popover-shown", () => { showView("usage"); renderRings(); renderDock(); });
   setStatus(await invoke("get_status").catch(() => []));
 }
 

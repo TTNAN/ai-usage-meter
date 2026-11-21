@@ -93,6 +93,14 @@ svg { display: block; }
   display: flex;
   flex-direction: column;
 }
+/* The Dock view is a floating bar: the window is as wide as its tiles, not
+   the rings' 372 px. Settings still opens at the popover's own width. */
+.panel[data-view="dock"] { width: max-content; }
+.panel[data-view="dock"].settings-open { width: 372px; }
+/* In Dock view the popover header and footer belong to the settings drawer
+   only; the dock bar carries its own slim footer. */
+.panel[data-view="dock"]:not(.settings-open) .top,
+.panel[data-view="dock"]:not(.settings-open) .bottom { display: none; }
 html.preview .panel { box-shadow: var(--shadow), inset 0 0 0 1px var(--hair-strong); max-height: calc(100vh - 48px); }
 html.preview.bare .panel { max-height: calc(100vh - 80px); }
 html:not(.vibrancy):not(.preview) .panel { background: var(--bg-solid); }
@@ -295,6 +303,92 @@ html:not(.vibrancy):not(.preview) .panel { background: var(--bg-solid); }
 }
 @keyframes shimmer { to { background-position: -200% 0; } }
 
+/* ------------------------------------------------------------- dock */
+/* One small tile per service and a 22 px strip of controls under it — no
+   names, no legends, no second line of text. The service's own icon, the
+   number, the one word that says what the number means, and a hairline bar
+   in the accent colour the user picked for it. Everything else (reset time,
+   trend, ETA) is a hover away, in the tooltip and in the strip below. */
+.view-dock {
+  padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 8px;
+  animation: viewIn 0.28s var(--ease);
+}
+.dock { display: flex; justify-content: center; gap: 8px; }
+.dtile {
+  position: relative; flex: none;
+  width: 88px; height: 88px; padding: 10px 9px 11px;
+  border-radius: 16px;
+  display: flex; flex-direction: column; align-items: center;
+  background: var(--raise);
+  box-shadow: inset 0 0 0 0.5px var(--hair), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: background 0.15s, box-shadow 0.15s, transform 0.15s var(--ease);
+}
+.dtile:hover { background: var(--raise-hover); box-shadow: inset 0 0 0 0.5px var(--hair-strong); }
+.dtile:active { transform: scale(0.97); }
+.dtile:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--accent); }
+.dicon { width: 20px; height: 20px; display: grid; place-items: center; color: var(--accent); }
+.dicon i {
+  width: 17px; height: 17px; background: currentColor;
+  -webkit-mask: var(--glyph) center / contain no-repeat;
+  mask: var(--glyph) center / contain no-repeat;
+}
+.dtile .dicon img { width: 18px; height: 18px; display: block; }
+.dtile[data-id="claude"] .dicon i { --glyph: url(icons/claude.svg); }
+.dtile[data-id="codex"] .dicon i { --glyph: url(icons/codex.svg); }
+.dtile[data-id="grok"] .dicon i { --glyph: url(icons/grok.svg); }
+.dtile[data-id="copilot"] .dicon i { --glyph: url(icons/copilot.svg); width: 18px; height: 18px; }
+.dpct {
+  margin-top: 6px; display: flex; align-items: baseline; gap: 1px;
+  font-family: var(--font-num); font-variant-numeric: tabular-nums;
+  color: var(--accent); line-height: 1;
+}
+.dpct b { font-size: 21px; font-weight: 650; letter-spacing: -0.035em; }
+.dpct small { font-size: 10px; font-weight: 600; letter-spacing: -0.01em; }
+.dtile.off .dpct b { font-size: 17px; font-weight: 600; }
+.dlabel {
+  margin-top: 3px; font-size: 8.5px; font-weight: 600;
+  letter-spacing: 0.06em; color: var(--text-3); white-space: nowrap;
+}
+.dbar {
+  margin-top: auto; width: 100%; height: 3px; border-radius: 99px;
+  background: color-mix(in srgb, var(--accent) 17%, transparent); overflow: hidden;
+}
+.dbar > i {
+  display: block; height: 100%; border-radius: inherit; background: var(--accent);
+  transition: width 0.8s var(--ease);
+}
+.dtile.off { --accent: var(--c-neutral); }
+.dtile.off .dicon { filter: grayscale(0.85); opacity: 0.45; }
+/* Nothing to measure yet: the icon and the word, no dash and no bar. */
+.dtile.off .dpct, .dtile.off .dbar { display: none; }
+.dtile.off .dlabel { margin: auto 0; font-size: 9.5px; color: var(--text-2); }
+.dtile.out .dpct { color: var(--c-danger); }
+.dtile.out .dbar > i { background: var(--c-danger); }
+
+/* The strip under the bar: view switch, Used/Left, the rest on the right.
+   Hovering a tile writes that service's reset time and ETA in the gap. */
+.dock-foot { display: flex; align-items: center; gap: 6px; height: 22px; }
+.dock-foot .seg { padding: 2px; }
+.dock-foot .seg button { font-size: 10px; padding: 2px 7px; border-radius: 5px; }
+.dock-detail {
+  flex: 1; min-width: 0; padding: 0 6px 0 4px;
+  font-size: 10px; color: var(--text-3); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+  opacity: 0; transition: opacity 0.15s;
+}
+.dock-detail.on { opacity: 1; }
+.dock-actions { display: flex; gap: 1px; margin-left: auto; }
+.dock-btn {
+  width: 22px; height: 22px; border-radius: 7px; flex: none;
+  display: grid; place-items: center; color: var(--text-2);
+  transition: background 0.15s, color 0.15s;
+}
+.dock-btn svg { width: 13px; height: 13px; }
+.dock-btn:hover { background: var(--raise-hover); color: var(--text); }
+.dock-btn.on { background: var(--raise-hover); color: var(--text); }
+.dock-btn.spinning svg { animation: spin 0.9s linear infinite; }
+
 /* ----------------------------------------------------------- settings */
 .view-settings { padding: 2px 12px 8px; }
 /* The settings page is taller than a popover should be: it scrolls inside the
@@ -488,7 +582,11 @@ html.edge-hidden .edge-handle { opacity: 1; pointer-events: auto; }
   box-shadow: inset 0 1px 0 var(--hair);
   font-size: 11px; color: var(--text-3);
 }
-.privacy-chip { display: inline-flex; align-items: center; gap: 5px; }
+/* The view switch lives here in both views: the one control that changes the
+   app's shape, named plainly in the user's language. */
+.view-seg { flex: none; }
+.view-seg button { font-size: 10.5px; padding: 2.5px 7px; }
+.privacy-chip { display: inline-flex; align-items: center; gap: 5px; min-width: 0; white-space: nowrap; }
 .privacy-chip svg { width: 12px; height: 12px; }
 .demo-chip {
   font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
