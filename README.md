@@ -140,7 +140,7 @@ AI_USAGE_METER_MOCK=1 cargo tauri dev   # 用演示数据运行
 后端分成两部分：每个应用自己的 `src-tauri/src/`（托盘、窗口、命令、轮询、网页登录），和两边共用的核心库 `src-tauri/crates/ai-usage-core/`（五家 provider、低额度提醒规则、托盘图标、贴边吸附）。核心库在每个项目里各存一份完全相同的副本，项目才能单独打包；改完用 `./sync-core.sh` 同步、`./sync-core.sh --check` 校验。
 
 ```bash
-cd src-tauri/crates/ai-usage-core && cargo test   # 核心库单元测试（54 项）
+cd src-tauri/crates/ai-usage-core && cargo test   # 核心库单元测试（58 项）
 cd src-tauri && cargo test                        # 应用层（需要 Tauri 的系统依赖）
 ```
 

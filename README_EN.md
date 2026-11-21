@@ -140,7 +140,7 @@ AI_USAGE_METER_MOCK=1 cargo tauri dev   # run with demo data
 The backend comes in two pieces: what is this app's alone in `src-tauri/src/` (tray, window, commands, poller, web sign-in), and the shared core in `src-tauri/crates/ai-usage-core/` (the five providers, low-quota rules, the tray icon, the edge maths). Each project keeps a byte-identical copy of the core so that it still builds from its own zip; `./sync-core.sh` copies this project's copy into its sibling and `./sync-core.sh --check` only compares.
 
 ```bash
-cd src-tauri/crates/ai-usage-core && cargo test   # core unit tests (54)
+cd src-tauri/crates/ai-usage-core && cargo test   # core unit tests (58)
 cd src-tauri && cargo test                        # app layer (needs Tauri's system deps)
 ```
 
