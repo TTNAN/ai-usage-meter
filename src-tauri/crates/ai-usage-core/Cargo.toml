@@ -1,7 +1,7 @@
 [package]
 name = "ai-usage-core"
-version = "0.6.1"
-description = "Usage providers, low-quota alert rules, the menu-bar icon and the screen-edge maths shared by AI Usage Meter and AI Usage Meter Dock."
+version = "0.7.0"
+description = "Usage providers, low-quota alert rules, the menu-bar icon and the screen-edge maths behind AI Usage Meter's rings popover and compact dock bar."
 authors = ["TTNAN"]
 license = "MIT"
 edition = "2021"
