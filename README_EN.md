@@ -72,17 +72,11 @@ xattr -cr "/Applications/AI Usage Meter.app"
 
 ### Package managers
 
-The quieter way in — the manifests for all three platforms live in
-[`packaging/`](packaging/README.md) and track every release:
+The quieter way in — the AUR manifest lives in [`packaging/`](packaging/README.md) and tracks every release:
 
 | Platform | Command |
 | --- | --- |
-| macOS (Homebrew, [own tap](packaging/README.md#homebrew-ttnanhomebrew-tap)) | `brew tap TTNAN/homebrew-tap && brew install --cask ai-usage-meter` |
-| Windows (Scoop, [own bucket](packaging/README.md#scoop-ttnanscoop-bucket)) | `scoop bucket add ttnan https://github.com/TTNAN/scoop-bucket && scoop install ai-usage-meter` |
 | Arch Linux (AUR) | `yay -S ai-usage-meter-bin` |
-
-The Homebrew cask strips macOS's quarantine attribute after installing, so no
-manual `xattr` needed.
 
 
 Then sign in to whichever tools you use (the rest just show "Not connected"):
