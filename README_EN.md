@@ -70,6 +70,21 @@ xattr -cr "/Applications/AI Usage Meter.app"
 >
 > Linux: install the `.deb` with `sudo apt install ./AI.Usage.Meter_0.7.1_amd64.deb`, or `chmod +x` the `.AppImage` and run it (AppImage needs FUSE, or use `--appimage-extract-and-run`). A Wayland session grants no global shortcut and lets no app place its own window, so neither the shortcut nor edge tucking is available there — Settings says so.
 
+### Package managers
+
+The quieter way in — the manifests for all three platforms live in
+[`packaging/`](packaging/README.md) and track every release:
+
+| Platform | Command |
+| --- | --- |
+| macOS (Homebrew, [own tap](packaging/README.md#homebrew-ttnanhomebrew-tap)) | `brew tap TTNAN/homebrew-tap && brew install --cask ai-usage-meter` |
+| Windows (Scoop, [own bucket](packaging/README.md#scoop-ttnanscoop-bucket)) | `scoop bucket add ttnan https://github.com/TTNAN/scoop-bucket && scoop install ai-usage-meter` |
+| Arch Linux (AUR) | `yay -S ai-usage-meter-bin` |
+
+The Homebrew cask strips macOS's quarantine attribute after installing, so no
+manual `xattr` needed.
+
+
 Then sign in to whichever tools you use (the rest just show "Not connected"):
 
 | Service | Easiest | Also works |
