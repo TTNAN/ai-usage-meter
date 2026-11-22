@@ -26,7 +26,7 @@ use ai_usage_core::providers::ServiceStatus;
 use ai_usage_core::{edge, notify, providers, tray_icon};
 use commands::*;
 use lock::lock;
-use poller::{mock_mode, refresh_and_broadcast};
+use poller::{mock_mode, now_ms, refresh_and_broadcast};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Mutex;
