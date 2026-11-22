@@ -4,8 +4,8 @@
 
 import {
   REPO, store, settings, TAURI, PREVIEW, params, invoke, demoStatus,
-  recordHistory, seedDemoHistory, applyColors, fmtReset, fmtDur, fmtAgo,
-  fitWindow,
+  recordHistory, seedDemoHistory, applyColors, applyTheme, THEMES, fmtReset, fmtDur, fmtAgo,
+  normalizeOpacity, applyOpacity, fitWindow,
 } from "./js/state.js";
 import { STRINGS, lang, t, syncLang } from "./js/i18n.js";
 import { applyShortcut, paintShortcutSeg, showShortcutState } from "./js/shortcut.js";
@@ -177,8 +177,17 @@ async function boot() {
   if (wantLang === "zh" || wantLang === "en") settings.lang = wantLang;
   const wantMode = params.get("mode");
   if (wantMode === "used" || wantMode === "left") settings.mode = wantMode;
+  // `?theme=light` / `?theme=dark` previews a face without storing it, the way
+  // the README's screenshots are taken.
+  const wantTheme = params.get("theme");
+  if (THEMES.includes(wantTheme)) settings.theme = wantTheme;
+  // `?opacity=60` previews a thinner panel the same way, and stores nothing.
+  if (params.has("opacity")) settings.opacity = normalizeOpacity(params.get("opacity"));
   if (params.get("hide") === "1") settings.hideDisconnected = true;
   document.getElementById("panel").dataset.view = settings.view;
+  // The face first: everything painted below reads its colours.
+  applyTheme();
+  applyOpacity();
   // The update check reads its `?update=` preview param before anything
   // renders, and schedules its daily background check for later.
   initUpdateCheck();
@@ -268,6 +277,17 @@ async function boot() {
   });
 
   setInterval(tick, 1000);
+
+  // Auto follows the OS: when the desktop flips while the window is open, the
+  // stylesheet repaints by itself, and this refreshes what the page read from
+  // it (the default accents shown in Settings). Older WebKit only has the
+  // deprecated `addListener`, so both spellings are offered.
+  const onScheme = () => {
+    if (settings.theme === "auto") applyTheme();
+  };
+  const scheme = matchMedia("(prefers-color-scheme: light)");
+  if (scheme.addEventListener) scheme.addEventListener("change", onScheme);
+  else if (scheme.addListener) scheme.addListener(onScheme);
 
   if (PREVIEW) {
     if (params.get("view") === "settings") showView("settings");

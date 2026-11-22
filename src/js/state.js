@@ -58,6 +58,24 @@ const CLI = {
 
 const LABEL = { claude: "Claude", codex: "ChatGPT", grok: "Grok", gemini: "Gemini", copilot: "Copilot" };
 
+// 外观 — 跟随系统 / 深色 / 浅色. `theme` is kept in `localStorage`; `data-theme`
+// on <html> is what the stylesheet reads, and "auto" leaves the OS in charge
+// (which is also the face that paints before the page has booted).
+const THEMES = ["auto", "dark", "light"];
+const normalizeTheme = (v) => (THEMES.includes(v) ? v : "auto");
+
+// 面板透明度 — 40–100 %. It only thins the panel's own surfaces: the ink, the
+// icons and the dock's brand tiles stay solid however far it is pulled down.
+const OPACITY_MIN = 40;
+const OPACITY_MAX = 100;
+
+function normalizeOpacity(v) {
+  if (v == null || v === "") return OPACITY_MAX;
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n)) return OPACITY_MAX;
+  return Math.min(OPACITY_MAX, Math.max(OPACITY_MIN, n));
+}
+
 const WEB_IDS = ["claude", "grok"];
 
 const TAURI = window.__TAURI__ && window.__TAURI__.core ? window.__TAURI__ : null;
@@ -82,6 +100,10 @@ const settings = {
   mode: localStorage.getItem("mode") || "left",
   tray: localStorage.getItem("tray") || "icon",
   lang: localStorage.getItem("lang") || "auto",
+  // 外观: which face the app paints. "auto" follows the OS's own preference.
+  theme: normalizeTheme(localStorage.getItem("theme")),
+  // 面板透明度: 100 keeps the panel exactly as it always was.
+  opacity: normalizeOpacity(localStorage.getItem("opacity")),
   // On unless the user turned it off; the tray has to know before the UI opens.
   notify: localStorage.getItem("notify") !== "0",
   hideDisconnected: localStorage.getItem("hide-disconnected") === "1",
@@ -94,6 +116,45 @@ const settings = {
 };
 // A shortcut that survived a restart is the one to come back to as well.
 if (settings.shortcut) rememberShortcut(settings.shortcut);
+
+// ------------------------------------------------------------------ theme
+//
+// Anything the page works out in JS from the palette — the default service
+// colours among them — asks `effectiveTheme()` what is actually painted, and
+// `applyTheme()` puts the saved choice where both the stylesheet and the
+// native window read it.
+
+/** The face actually shown: a forced Dark or Light, otherwise the OS's. */
+function effectiveTheme() {
+  const chosen = document.documentElement.dataset.theme || settings.theme;
+  if (chosen === "dark" || chosen === "light") return chosen;
+  return matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+}
+
+/** Paint the saved choice, and re-read everything that came from the palette. */
+function applyTheme() {
+  document.documentElement.dataset.theme = settings.theme;
+  // Each theme brings its own default accents: the hex labels and swatches in
+  // Settings are read from the stylesheet, so they have to be read again.
+  syncColorRows();
+  syncDockColors();
+  syncDockColorbar();
+  // The window paints its own back as well — macOS's vibrancy material, the
+  // frame Windows and Linux draw — so hand the choice down to Rust too.
+  if (!PREVIEW) invoke("set_theme", { theme: settings.theme }).catch(() => {});
+}
+
+// ---------------------------------------------------------- panel opacity
+
+/** Hand the chosen transparency to the stylesheet, and show it as a percentage. */
+function applyOpacity() {
+  document.documentElement.style.setProperty("--panel-alpha", String(settings.opacity / 100));
+  const value = document.getElementById("opacity-value");
+  if (value) value.textContent = `${settings.opacity}%`;
+  const slider = document.getElementById("set-opacity");
+  // Don't fight the thumb while it is being dragged.
+  if (slider && document.activeElement !== slider) slider.value = String(settings.opacity);
+}
 
 // ------------------------------------------------------- usage history
 //
@@ -349,7 +410,10 @@ function saveColors() {
 function effectiveColor(id) {
   if (serviceColors[id]) return serviceColors[id];
   const v = getComputedStyle(document.documentElement).getPropertyValue(ACCENT_VAR[id] || "").trim();
-  return HEX.test(v) ? v.toLowerCase() : "#9a9aa2";
+  // The stylesheet paints one neutral per theme; this is that value for the
+  // face currently shown, for the case where the variable cannot be read.
+  const neutral = effectiveTheme() === "light" ? "#71717a" : "#9a9aa2";
+  return HEX.test(v) ? v.toLowerCase() : neutral;
 }
 
 // A colour is only useful if it can be read: WCAG relative luminance and the
@@ -430,6 +494,7 @@ function syncTrayColors() {
 export {
   REPO, ORDER, ACCENT_VAR, ACCENT_FALLBACK, accent, TILE_IMG, tileGlyph, TILE_BG,
   PRESETS, HEX, CLI, LABEL, WEB_IDS, TAURI, PREVIEW, params, store, settings,
+  THEMES, effectiveTheme, applyTheme, normalizeOpacity, applyOpacity,
   invoke, fitWindow, demoStatus, cap, hasNumbers, peakUsed, shown, headline,
   fmtDur, fmtReset, fmtAbs, esc, withCode, fmtAgo,
   loadHistory, saveHistory, recordHistory, leftPercent, burnRate, etaSeconds,

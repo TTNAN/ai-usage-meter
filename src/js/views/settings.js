@@ -3,7 +3,8 @@
 
 import {
   store, settings, ORDER, LABEL, PRESETS, serviceColors, effectiveColor,
-  setColor, resetColor, resetAllColors, tileGlyph, esc, invoke, PREVIEW,
+  setColor, resetColor, resetAllColors, tileGlyph, esc, invoke, PREVIEW, applyTheme,
+  normalizeOpacity, applyOpacity,
 } from "../state.js";
 import { t, syncLang } from "../i18n.js";
 import {
@@ -92,6 +93,9 @@ function bindSettings() {
       if (key === "tray") invoke("set_tray_mode", { mode: settings.tray }).catch(() => {});
       if (key === "shortcut") applyShortcut();
       if (key === "lang") syncLang();
+      // 外观 repaints the whole page from the new palette, before the views
+      // below are laid out again.
+      if (key === "theme") applyTheme();
       applyI18n();
       render();
     })
@@ -119,6 +123,16 @@ function bindSettings() {
     settings.hideDisconnected = hide.checked;
     localStorage.setItem("hide-disconnected", settings.hideDisconnected ? "1" : "0");
     render();
+  });
+
+  // 面板透明度: a slider that thins the panel while it is dragged. Only the
+  // panel's surfaces take the alpha; the text and the tiles never fade.
+  const opacity = document.getElementById("set-opacity");
+  opacity.value = String(settings.opacity);
+  opacity.addEventListener("input", () => {
+    settings.opacity = normalizeOpacity(opacity.value);
+    localStorage.setItem("opacity", String(settings.opacity));
+    applyOpacity();
   });
 
   const edgeSwitch = document.getElementById("edge-hide");

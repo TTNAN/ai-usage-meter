@@ -348,6 +348,7 @@ fn main() {
             refresh_status,
             set_notify_enabled,
             set_lang,
+            set_theme,
             set_window_size,
             hide_window,
             set_tray_mode,

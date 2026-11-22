@@ -26,17 +26,30 @@ html .panel[data-view="dock"]:not(.settings-open) {
     0 2px 8px rgba(0, 0, 0, 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
   --dock-tile-shadow: 0 12px 28px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  /* The trend line under each squircle keeps its own accent, and the drawer's
+     card its own shadow: both are part of the face, so they live here with
+     the rest of the palette. */
+  --dock-micro-codex: #6e9bff;
+  --dock-micro-claude: #e08a6b;
+  --dock-micro-grok: #a78bfa;
+  --dock-micro-gemini: #38bdf8;
+  --dock-micro-copilot: #34d399;
+  --dock-cb-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 10px 24px rgba(0, 0, 0, 0.35);
 
   width: max-content;
   padding: 30px 12px 22px;
-  background: var(--dock-surface);
+  /* 面板透明度: the tray's own sheet, thinned like the panel under it. */
+  background: color-mix(in srgb, var(--dock-surface) calc(var(--panel-alpha, 1) * 100%), transparent);
   border-radius: 16px;
   box-shadow: none;
   overflow: visible;
   align-items: center;
 }
+/* The light face, the same way round as the popover's: a forced Light wins on
+   any OS, and with no forced Dark the OS's light preference applies. The two
+   copies of the palette must stay in step. */
 @media (prefers-color-scheme: light) {
-  html .panel[data-view="dock"]:not(.settings-open) {
+  html:not([data-theme="dark"]) .panel[data-view="dock"]:not(.settings-open) {
     --dock-ink: #18181b;
     --dock-ink-2: rgba(24, 24, 27, 0.66);
     --dock-ink-3: rgba(24, 24, 27, 0.5);
@@ -55,7 +68,39 @@ html .panel[data-view="dock"]:not(.settings-open) {
       0 2px 8px rgba(0, 0, 0, 0.07),
       inset 0 1px 0 rgba(255, 255, 255, 0.9);
     --dock-tile-shadow: 0 10px 22px rgba(24, 24, 40, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    --dock-micro-codex: #3d74f0;
+    --dock-micro-claude: #c2623f;
+    --dock-micro-grok: #7c4dff;
+    --dock-micro-gemini: #0e93a2;
+    --dock-micro-copilot: #2f9e51;
+    --dock-cb-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 10px 24px rgba(24, 24, 40, 0.10);
   }
+}
+html[data-theme="light"] .panel[data-view="dock"]:not(.settings-open) {
+  --dock-ink: #18181b;
+  --dock-ink-2: rgba(24, 24, 27, 0.66);
+  --dock-ink-3: rgba(24, 24, 27, 0.5);
+  --dock-hair: rgba(0, 0, 0, 0.08);
+  --dock-hair-2: rgba(0, 0, 0, 0.12);
+  --dock-raise: rgba(0, 0, 0, 0.03);
+  --dock-raise-hover: rgba(0, 0, 0, 0.06);
+  --dock-surface: #f7f7f9;
+  --dock-tray: #e9e9ef;
+  --dock-pill: rgba(0, 0, 0, 0.05);
+  --dock-pill-ink: rgba(24, 24, 27, 0.5);
+  --dock-pill-on: #18181b;
+  --dock-pill-on-ink: #ffffff;
+  --dock-tray-shadow:
+    0 20px 40px rgba(24, 24, 40, 0.16),
+    0 2px 8px rgba(0, 0, 0, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --dock-tile-shadow: 0 10px 22px rgba(24, 24, 40, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  --dock-micro-codex: #3d74f0;
+  --dock-micro-claude: #c2623f;
+  --dock-micro-grok: #7c4dff;
+  --dock-micro-gemini: #0e93a2;
+  --dock-micro-copilot: #2f9e51;
+  --dock-cb-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 10px 24px rgba(24, 24, 40, 0.10);
 }
 
 .view-dock {
@@ -104,7 +149,7 @@ html .panel[data-view="dock"]:not(.settings-open) {
      three-service dock and the row under it stay one block. */
   width: 100%;
   margin-top: 44px;
-  background: var(--dock-tray);
+  background: color-mix(in srgb, var(--dock-tray) calc(var(--panel-alpha, 1) * 100%), transparent);
   border: 1px solid var(--dock-hair);
   border-radius: 36px;
   padding: 0 24px 26px;
@@ -213,18 +258,11 @@ html .panel[data-view="dock"]:not(.settings-open) {
   font-size: 8.5px; font-weight: 600; letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-.view-dock .cell[data-id="codex"] .micro { color: #6e9bff; }
-.view-dock .cell[data-id="claude"] .micro { color: #e08a6b; }
-.view-dock .cell[data-id="grok"] .micro { color: #a78bfa; }
-.view-dock .cell[data-id="gemini"] .micro { color: #38bdf8; }
-.view-dock .cell[data-id="copilot"] .micro { color: #34d399; }
-@media (prefers-color-scheme: light) {
-  .view-dock .cell[data-id="codex"] .micro { color: #3d74f0; }
-  .view-dock .cell[data-id="claude"] .micro { color: #c2623f; }
-  .view-dock .cell[data-id="grok"] .micro { color: #7c4dff; }
-  .view-dock .cell[data-id="gemini"] .micro { color: #0e93a2; }
-  .view-dock .cell[data-id="copilot"] .micro { color: #2f9e51; }
-}
+.view-dock .cell[data-id="codex"] .micro { color: var(--dock-micro-codex); }
+.view-dock .cell[data-id="claude"] .micro { color: var(--dock-micro-claude); }
+.view-dock .cell[data-id="grok"] .micro { color: var(--dock-micro-grok); }
+.view-dock .cell[data-id="gemini"] .micro { color: var(--dock-micro-gemini); }
+.view-dock .cell[data-id="copilot"] .micro { color: var(--dock-micro-copilot); }
 
 /* A service with no numbers keeps its place: the mark faded, "--" where the
    number goes, and one word that says why. */
@@ -302,13 +340,8 @@ html .panel[data-view="dock"]:not(.settings-open) {
   padding: 10px 14px 12px; border-radius: 14px;
   background: var(--dock-raise-hover);
   border: 1px solid var(--dock-hair);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 10px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--dock-cb-shadow);
   animation: cbIn 0.2s ease-out;
-}
-@media (prefers-color-scheme: light) {
-  .view-dock .colorbar {
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 10px 24px rgba(24, 24, 40, 0.10);
-  }
 }
 @keyframes cbIn { from { opacity: 0; transform: translateY(-4px); } }
 .view-dock .cb-head { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }

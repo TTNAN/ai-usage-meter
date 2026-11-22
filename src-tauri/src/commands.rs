@@ -50,6 +50,25 @@ pub(crate) fn set_lang(state: State<AppState>, lang: String) {
     *lock(&state.notify_lang) = normalize_lang(&lang).to_string();
 }
 
+/// 外观 — 跟随系统 / 深色 / 浅色. The page repaints itself; this keeps the
+/// window's own back in step, so macOS's vibrancy material, the frame Windows
+/// and Linux draw and the scrollbars inside the webview agree with the colours.
+/// `"auto"` (or anything unrecognised) hands the decision back to the system.
+#[tauri::command]
+pub(crate) fn set_theme(app: AppHandle, theme: String) {
+    let Some(window) = main_window(&app) else {
+        return;
+    };
+    let theme = match theme.as_str() {
+        "dark" => Some(tauri::Theme::Dark),
+        "light" => Some(tauri::Theme::Light),
+        _ => None,
+    };
+    // The window can already be on its way down; a refused request changes
+    // nothing the page can see, so there is nothing to report back.
+    let _ = window.set_theme(theme);
+}
+
 #[tauri::command]
 pub(crate) async fn refresh_status(app: AppHandle) -> Result<Vec<ServiceStatus>, String> {
     if !mock_mode() {
