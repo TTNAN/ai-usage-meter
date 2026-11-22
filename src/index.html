@@ -111,6 +111,22 @@
                 <button type="button" data-value="en">EN</button>
               </div>
             </div>
+            <div class="setting">
+              <span data-i18n="appearance">Appearance</span>
+              <div class="seg" data-setting="theme">
+                <button type="button" data-value="auto" data-i18n="themeAuto">Auto</button>
+                <button type="button" data-value="dark" data-i18n="themeDark">Dark</button>
+                <button type="button" data-value="light" data-i18n="themeLight">Light</button>
+              </div>
+            </div>
+            <div class="setting">
+              <span id="opacity-label" data-i18n="panelOpacity">Panel opacity</span>
+              <span class="opacity-side">
+                <input id="set-opacity" type="range" min="40" max="100" step="5"
+                       aria-labelledby="opacity-label" />
+                <span class="opacity-value" id="opacity-value">100%</span>
+              </span>
+            </div>
             <label class="setting">
               <span data-i18n="launchAtLogin">Launch at login</span>
               <input type="checkbox" class="switch" id="autostart" />

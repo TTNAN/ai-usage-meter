@@ -41,6 +41,26 @@ const presetU = (page) =>
 const storedShortcut = (page, key = "shortcut") =>
   page.evaluate((k) => localStorage.getItem(k), key);
 
+// A computed style, and the alpha channel of a colour string (`rgba(…)` or the
+// `color(srgb … / a)` a color-mix() comes back as): how the suite asserts what
+// was actually painted rather than what was asked for.
+const computed = (page, sel, prop) =>
+  page.evaluate(
+    ([s, p]) => getComputedStyle(document.querySelector(s))[p],
+    [sel, prop]
+  );
+const alphaOf = (color) => {
+  const nums = (String(color).match(/-?[\d.]+/g) || []).map(Number);
+  return nums.length > 3 ? nums[3] : 1;
+};
+// The r/g/b a colour string carries, in 0–255, whichever way it is written.
+const channelsOf = (color) => {
+  const s = String(color).trim();
+  const nums = (s.match(/-?[\d.]+/g) || []).map(Number);
+  // `color(srgb …)` carries 0–1 channels; `rgb()` carries 0–255.
+  return nums.slice(0, 3).map((v) => Math.round(s.startsWith("color(") ? v * 255 : v));
+};
+
 async function expectPresetChordHeld(page) {
   await expect(customPill(page)).toHaveText(/^(Custom|自定义)$/);
   await expect(customPill(page)).not.toHaveClass(/\bon\b/);
@@ -74,6 +94,16 @@ test.describe("no errors, no overflow, across views, languages and states", () =
     ["dock, changed", "/?view=dock&state=changed"],
     ["settings", "/?view=settings"],
     ["settings, zh", "/?view=settings&lang=zh"],
+    // The appearance switch: a forced face has to paint on the other kind of
+    // desktop too, and its row has to fit beside the language one.
+    ["settings, zh, forced light", "/?view=settings&lang=zh&theme=light"],
+    ["rings, forced dark", "/?theme=dark"],
+    ["dock, forced light", "/?view=dock&theme=light"],
+    ["dock, zh, forced dark", "/?view=dock&lang=zh&theme=dark"],
+    // Panel opacity: the thinner surfaces have to keep the text on them.
+    ["rings, opacity 60", "/?opacity=60"],
+    ["dock, opacity 60", "/?view=dock&opacity=60"],
+    ["settings, zh, opacity 60", "/?view=settings&lang=zh&opacity=60"],
   ];
 
   for (const dark of [true, false]) {
@@ -306,5 +336,178 @@ test.describe("view switching and the language switch", () => {
     await page.click('[data-setting="lang"] [data-value="zh"]');
     await expect(page.locator(".brand-name")).toHaveText("AI 用量");
     await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+  });
+});
+
+// --------------------------------------------------------------- appearance
+test.describe("the appearance switch", () => {
+  // The two inks the palette itself sets, so a test can tell the faces apart
+  // without trusting any one surface's colour.
+  const INK = { dark: "rgb(244, 244, 245)", light: "rgb(24, 24, 27)" };
+  const themeButton = (v) => `.seg[data-setting="theme"] button[data-value="${v}"]`;
+  const savedTheme = (page) => page.evaluate(() => localStorage.getItem("theme"));
+
+  test("Light wins over a dark desktop, and Auto hands it back", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.goto(url("/?view=settings"));
+    await page.waitForTimeout(400);
+    // Auto on a dark desktop paints dark, and says so.
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "auto");
+    expect(await computed(page, "body", "color")).toBe(INK.dark);
+
+    await page.click(themeButton("light"));
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await expect(page.locator(themeButton("light"))).toHaveClass(/\bon\b/);
+    // The panel goes pale although the desktop is still dark.
+    expect(await computed(page, "body", "color")).toBe(INK.light);
+    expect(channelsOf(await computed(page, "#panel", "backgroundColor"))).toEqual([250, 250, 250]);
+    expect(await savedTheme(page)).toBe("light");
+
+    await page.click(themeButton("auto"));
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "auto");
+    expect(await computed(page, "body", "color")).toBe(INK.dark);
+    expect(await savedTheme(page)).toBe("auto");
+  });
+
+  test("the Dock's tray takes the same face", async ({ page }) => {
+    // The Dock has its own palette (surface, tray, ink) — it has to follow, not
+    // just the popover's.
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.goto(url("/?view=dock&state=empty"));
+    await page.waitForTimeout(500);
+    expect(channelsOf(await computed(page, "#panel", "backgroundColor"))).toEqual([11, 11, 19]);
+
+    // A dock panel has no Settings button of its own: a quiet squircle opens it.
+    await page.click('#dock-logins [data-login="copilot"]');
+    await expect(page.locator("#view-settings")).toBeVisible();
+    await page.click(themeButton("light"));
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await page.click("#back");
+    await expect(page.locator("#view-dock")).toBeVisible();
+    expect(channelsOf(await computed(page, "#panel", "backgroundColor"))).toEqual([247, 247, 249]);
+    expect(await computed(page, ".view-dock .names span", "color")).toBe(INK.light);
+  });
+
+  test("the choice survives a reload", async ({ page }) => {
+    await page.goto(url("/"));
+    await page.waitForTimeout(400);
+    await page.click("#settings-btn");
+    await page.click(themeButton("dark"));
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    expect(await savedTheme(page)).toBe("dark");
+
+    await page.reload();
+    await page.waitForTimeout(400);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    expect(await computed(page, "body", "color")).toBe(INK.dark);
+  });
+
+  test("Auto follows a system flip, down to the default colours", async ({ page }) => {
+    await page.goto(url("/?view=settings"));
+    await page.waitForTimeout(400);
+    const hex = page.locator('.color-row[data-color="claude"] [data-hex]');
+    await expect(hex).toHaveText("#D0704F"); // Claude on a light desktop
+    await page.emulateMedia({ colorScheme: "dark" });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "auto");
+    expect(await computed(page, "body", "color")).toBe(INK.dark);
+    // The rows read their defaults from the palette, so they follow along.
+    await expect(hex).toHaveText("#E08A6B");
+  });
+
+  test("?theme= previews a face without saving it", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.goto(url("/?theme=light"));
+    await page.waitForTimeout(400);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    expect(await computed(page, "body", "color")).toBe(INK.light);
+    // A preview, not a choice: nothing was stored…
+    expect(await savedTheme(page)).toBeNull();
+    // …and the control shows the face being previewed.
+    await page.click("#settings-btn");
+    await expect(page.locator(themeButton("light"))).toHaveClass(/\bon\b/);
+  });
+
+  test("names the three choices in both languages", async ({ page }) => {
+    await page.goto(url("/?view=settings&lang=zh"));
+    await page.waitForTimeout(400);
+    await expect(page.locator(themeButton("auto"))).toHaveText("跟随系统");
+    await expect(page.locator(themeButton("dark"))).toHaveText("深色");
+    await expect(page.locator(themeButton("light"))).toHaveText("浅色");
+    await page.click(themeButton("dark"));
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  });
+});
+
+// ------------------------------------------------------------ panel opacity
+test.describe("panel opacity", () => {
+  const alpha = (page) =>
+    page.evaluate(() =>
+      document.documentElement.style.getPropertyValue("--panel-alpha").trim()
+    );
+  const saved = (page) => page.evaluate(() => localStorage.getItem("opacity"));
+  const panelBg = (page) => computed(page, "#panel", "backgroundColor");
+
+  test("the slider thins the panel, never the ink on it", async ({ page }) => {
+    await page.goto(url("/?view=settings"));
+    await page.waitForTimeout(400);
+    // 100 % is the panel exactly as it always was.
+    expect(await alpha(page)).toBe("1");
+    await expect(page.locator("#opacity-value")).toHaveText("100%");
+    const solid = await panelBg(page);
+    const ink = await computed(page, "body", "color");
+    const label = await computed(page, "#opacity-label", "color");
+
+    await page.locator("#set-opacity").fill("75");
+    await expect(page.locator("#opacity-value")).toHaveText("75%");
+    expect(await alpha(page)).toBe("0.75");
+    expect(await saved(page)).toBe("75");
+
+    // The surface gives way: the light panel's 0.9 × 0.75.
+    const thin = await panelBg(page);
+    expect(alphaOf(thin)).toBeCloseTo(0.675, 2);
+    expect(alphaOf(thin)).toBeLessThan(alphaOf(solid));
+    // …while the text, its colour and the panel's own opacity are untouched.
+    expect(await computed(page, "body", "color")).toBe(ink);
+    expect(await computed(page, "#opacity-label", "color")).toBe(label);
+    expect(await computed(page, "#panel", "opacity")).toBe("1");
+
+    // The choice survives a restart.
+    await page.reload();
+    await page.waitForTimeout(400);
+    expect(await alpha(page)).toBe("0.75");
+    await expect(page.locator("#opacity-value")).toHaveText("75%");
+    expect(await page.locator("#set-opacity").inputValue()).toBe("75");
+  });
+
+  test("?opacity=60 previews it in Rings and Dock, and stores nothing", async ({
+    page,
+  }) => {
+    const errors = [];
+    page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+    page.on("pageerror", (e) => errors.push(String(e)));
+
+    await page.goto(url("/?opacity=60"));
+    await page.waitForTimeout(500);
+    expect(await alpha(page)).toBe("0.6");
+    expect(await saved(page)).toBeNull();
+    expect(alphaOf(await panelBg(page))).toBeCloseTo(0.54, 2); // 0.9 × 0.6
+
+    // The Dock's own surfaces are thinned the same way: panel and tray.
+    await page.goto(url("/?view=dock&opacity=60"));
+    await page.waitForTimeout(500);
+    expect(await alpha(page)).toBe("0.6");
+    expect(alphaOf(await panelBg(page))).toBeCloseTo(0.6, 2);
+    const tray = await computed(page, "#dock", "backgroundColor");
+    expect(alphaOf(tray)).toBeCloseTo(0.6, 2);
+    expect(errors, "console and page errors").toEqual([]);
+  });
+
+  test("clamps what it is given", async ({ page }) => {
+    await page.goto(url("/?opacity=5"));
+    await page.waitForTimeout(300);
+    expect(await alpha(page)).toBe("0.4");
+    await page.goto(url("/?opacity=oops"));
+    await page.waitForTimeout(300);
+    expect(await alpha(page)).toBe("1");
   });
 });

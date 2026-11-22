@@ -47,8 +47,34 @@
     "Segoe UI", Inter, Roboto, sans-serif;
 }
 
+/* The light face. Two ways in, so Settings › 外观 can overrule the OS in either
+   direction: `data-theme="light"` forces it, and with no forced Dark (the
+   "auto" choice — and what paints before the page boots) the OS's own light
+   preference decides. The block below therefore appears twice, word for word;
+   keep the two copies in step. */
+html[data-theme="light"] {
+  --c-claude: #d0704f;
+  --c-codex: #3d74f0;
+  --c-grok: #8b5cf6;
+  --c-gemini: #0e93a2;
+  --c-copilot: #2f9e51;
+  --c-neutral: #71717a;
+  --c-warn: #d98a0b;
+  --c-danger: #e5484d;
+  --bg: rgba(250, 250, 250, 0.9);
+  --bg-solid: #fafafa;
+  --raise: rgba(0, 0, 0, 0.035);
+  --raise-hover: rgba(0, 0, 0, 0.06);
+  --hair: rgba(0, 0, 0, 0.07);
+  --hair-strong: rgba(0, 0, 0, 0.11);
+  --track: rgba(0, 0, 0, 0.07);
+  --text: #18181b;
+  --text-2: rgba(24, 24, 27, 0.62);
+  --text-3: rgba(24, 24, 27, 0.42);
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.08);
+}
 @media (prefers-color-scheme: light) {
-  :root {
+  html:not([data-theme="dark"]) {
     --c-claude: #d0704f;
     --c-codex: #3d74f0;
     --c-grok: #8b5cf6;
@@ -71,14 +97,27 @@
   }
 }
 
+/* Scrollbars, the native colour picker and the page's own canvas take the
+   same side as the palette — a forced Light on a Dark desktop must not put
+   dark scrollbars on a pale panel. */
+html[data-theme="light"] { color-scheme: light; }
+html[data-theme="dark"] { color-scheme: dark; }
+@media (prefers-color-scheme: light) {
+  html:not([data-theme="dark"]):not([data-theme="light"]) { color-scheme: light; }
+}
+
 /* On macOS the native popover material sits behind us: let it show. */
 html.vibrancy { --bg: rgba(24, 24, 27, 0.42); }
+html[data-theme="light"].vibrancy { --bg: rgba(255, 255, 255, 0.38); }
 @media (prefers-color-scheme: light) {
-  html.vibrancy { --bg: rgba(255, 255, 255, 0.38); }
+  html.vibrancy:not([data-theme="dark"]) { --bg: rgba(255, 255, 255, 0.38); }
 }
 /* Browser preview: give the panel something to float on. */
 html.preview body { padding: 24px; background: #0c0c0e; min-height: 100vh; }
-@media (prefers-color-scheme: light) { html.preview body { background: #e9e9ec; } }
+html[data-theme="light"].preview body { background: #e9e9ec; }
+@media (prefers-color-scheme: light) {
+  html.preview:not([data-theme="dark"]) body { background: #e9e9ec; }
+}
 html.preview.bare body { background: transparent; padding: 40px; }
 html.preview.frame body { background: transparent; padding: 0; }
 /* Framed for a screenshot: the panel sizes to its content, page and all. */
@@ -103,7 +142,9 @@ svg { display: block; }
 
 .panel {
   width: 372px;
-  background: var(--bg);
+  /* 面板透明度 mixes into this surface only — the ink, the hairlines and the
+     icons are painted exactly as they were at any setting. */
+  background: color-mix(in srgb, var(--bg) calc(var(--panel-alpha, 1) * 100%), transparent);
   border-radius: var(--radius);
   box-shadow: inset 0 0 0 1px var(--hair-strong), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   overflow: hidden;
@@ -121,7 +162,11 @@ svg { display: block; }
 .panel[data-view="dock"]:not(.settings-open) .bottom { display: none; }
 html.preview .panel { box-shadow: var(--shadow), inset 0 0 0 1px var(--hair-strong); max-height: calc(100vh - 48px); }
 html.preview.bare .panel { max-height: calc(100vh - 80px); }
-html:not(.vibrancy):not(.preview) .panel { background: var(--bg-solid); }
+html:not(.vibrancy):not(.preview) .panel {
+  /* Windows and Linux draw no native material behind the window, so the panel
+     itself is the surface — thinned by the same `--panel-alpha`. */
+  background: color-mix(in srgb, var(--bg-solid) calc(var(--panel-alpha, 1) * 100%), transparent);
+}
 
 /* ------------------------------------------------------------- header */
 .top {
