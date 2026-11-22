@@ -15,7 +15,8 @@
 //! Session cookies stay inside the app's own webview storage. We never read
 //! them out, copy them or send them anywhere else.
 
-use crate::{lock, AppState};
+use crate::lock::lock;
+use crate::AppState;
 use ai_usage_core::providers;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -280,7 +281,7 @@ fn handle_report(app: &AppHandle, label: &str, url: &Url) {
     };
     lock(&state.web_last_report).insert(site.id, providers::now_unix());
     lock(&state.web).insert(site.id, status);
-    crate::apply_web_results(app);
+    crate::poller::apply_web_results(app);
     // The report is the last thing this hidden window was for: let go of it
     // instead of keeping a whole webview resident until the next poll. The
     // session lives in the app's shared webview storage, so the next poll
@@ -568,7 +569,7 @@ pub fn sign_out(app: &AppHandle, id: &str) -> Result<(), String> {
     if let Some(w) = login {
         let _ = w.close();
     }
-    crate::apply_web_results(app);
+    crate::poller::apply_web_results(app);
     let _ = app.emit("web-logins", signed_in(app));
     Ok(())
 }
