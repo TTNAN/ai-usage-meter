@@ -6,6 +6,7 @@ import {
   shown, headline, fmtAbs, fmtReset, fmtDur, fmtAgo, esc, withCode,
   sparkline, etaSeconds, etaText,
 } from "../state.js";
+import { getUpdate } from "../update.js";
 import { t } from "../i18n.js";
 
 // The hero gauge is concentric rings, one per connected service, outermost
@@ -195,7 +196,10 @@ function serviceRow(s) {
     // send the user to a login page that cannot fix it.
     const login = WEB_IDS.includes(s.id) && s.state !== "changed" && (s.state !== "expired" || s.source === "web" || !store.webLogins.includes(s.id))
       ? ` <button class="inline-btn" type="button" data-login="${s.id}">${esc(t("signInRow"))} →</button>` : "";
-    body = `<div class="svc-msg" title="${esc(s.note || "")}"><span class="dot ${warn ? "warn" : ""}"></span><span>${withCode(msg)}${login}</span></div>`;
+    // When the fix is already out, the changed row points straight at it.
+    const fix = s.state === "changed" && getUpdate()
+      ? ` <button class="inline-btn" type="button" data-open-update>${esc(t("updateOpen")(getUpdate().version))} →</button>` : "";
+    body = `<div class="svc-msg" title="${esc(s.note || "")}"><span class="dot ${warn ? "warn" : ""}"></span><span>${withCode(msg)}${fix}${login}</span></div>`;
   }
 
   return `<li class="${cls.join(" ")}" style="--accent: ${accent(s.id)}">

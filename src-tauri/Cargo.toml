@@ -17,6 +17,9 @@ tauri-plugin-autostart = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-global-shortcut = "2"
 ai-usage-core = { path = "crates/ai-usage-core" }
+# The update check only: one GET to the GitHub Releases API, same TLS setup
+# and system-proxy behaviour the core crate's requests use.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "system-proxy"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

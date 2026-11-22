@@ -59,6 +59,7 @@
         <div class="names" id="dock-names" data-tauri-drag-region></div>
         <footer class="dock-foot">
           <div class="logins" id="dock-logins"></div>
+          <button class="update-pill" id="dock-update" type="button" hidden data-i18n-title="checkUpdate"></button>
           <div class="foot-actions">
             <button id="dock-colors" type="button" data-i18n="dockColors" aria-expanded="false">Colors</button>
             <button id="dock-edge" type="button" data-i18n="dockEdgeBtn" data-i18n-title="dockEdge">Edge</button>
@@ -175,6 +176,13 @@
               <span class="kbd">⌘Q</span>
             </button>
           </div>
+          <div class="setting" id="setting-update">
+            <span data-i18n="checkUpdate">Check for updates</span>
+            <span class="sc-side">
+              <button class="pill" type="button" id="check-update" data-i18n="checkUpdateBtn">Check</button>
+              <small class="sc-note" id="update-note" role="status" aria-live="polite" hidden></small>
+            </span>
+          </div>
           <p class="fineprint" data-i18n="privacy">Reads the logins your official CLIs already saved. Read-only requests, straight to each service. No servers, no analytics.</p>
         </div>
       </section>
@@ -191,6 +199,7 @@
         <span data-i18n="local">On-device · read-only</span>
       </span>
       <span class="version" id="version"></span>
+      <button class="update-pill" id="update-pill" type="button" hidden data-i18n-title="checkUpdate"></button>
     </footer>
   </main>
   <!-- Edge dock: a 12 px grab handle on the window's edge that stays on

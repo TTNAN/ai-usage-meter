@@ -17,6 +17,7 @@ import {
   renderDock, syncDockWidth, paintDockShortcut, showDockColorbar, bindDock,
   dockReset,
 } from "./js/views/dock.js";
+import { initUpdateCheck, paintUpdate, getUpdate, updateUrl } from "./js/update.js";
 import {
   renderAccounts, renderColorRows, syncSettingsScroll, bindSettings,
   bindColorRows, bindAccounts,
@@ -90,6 +91,7 @@ function tick() {
   document.querySelectorAll("[data-ago]").forEach((el) => {
     el.textContent = t("fromSession")(fmtAgo(parseFloat(el.dataset.ago)));
   });
+  paintUpdate();
   const up = document.getElementById("updated");
   if (!store.lastUpdate) { up.textContent = ""; return; }
   const secs = (Date.now() - store.lastUpdate) / 1000;
@@ -177,6 +179,9 @@ async function boot() {
   if (wantMode === "used" || wantMode === "left") settings.mode = wantMode;
   if (params.get("hide") === "1") settings.hideDisconnected = true;
   document.getElementById("panel").dataset.view = settings.view;
+  // The update check reads its `?update=` preview param before anything
+  // renders, and schedules its daily background check for later.
+  initUpdateCheck();
 
   if (PREVIEW) {
     root.classList.add("preview");
@@ -228,9 +233,13 @@ async function boot() {
   );
 
   document.getElementById("edge-handle").addEventListener("click", () => invoke("expand_docked").catch(() => {}));
+  document.getElementById("update-pill").addEventListener("click", () => openUrl(updateUrl()));
 
   document.getElementById("refresh").addEventListener("click", refresh);
   document.getElementById("services").addEventListener("click", (e) => {
+    // A changed API with a fix already out: the row's own way to it.
+    const up = e.target.closest("[data-open-update]");
+    if (up) { openUrl(updateUrl()); return; }
     const b = e.target.closest("[data-login]");
     if (b) signIn(b.dataset.login);
   });
@@ -284,4 +293,4 @@ async function boot() {
 
 boot();
 
-export { showView, applyView, setView, setEdgeState, refresh, setStatus, signIn, loadLogins, render, applyI18n };
+export { showView, applyView, setView, setEdgeState, refresh, setStatus, signIn, loadLogins, render, applyI18n, openUrl };

@@ -10,7 +10,8 @@ import {
 import { t } from "../i18n.js";
 import { shortcutLabel, setShortcut, applyShortcut } from "../shortcut.js";
 import { visibleRows, noteReason } from "./rings.js";
-import { refresh, signIn, showView } from "../../main.js";
+import { refresh, signIn, showView, openUrl } from "../../main.js";
+import { getUpdate, updateUrl } from "../update.js";
 
 // --------------------------------------------------------------- dock
 // The Dock view is the original ai-usage-meter-dock design, ported whole —
@@ -110,7 +111,7 @@ function dockCell(s) {
          // An unreachable service is signed in already — its line carries why.
          s.state === "loading" ? ""
            : s.state === "unavailable" ? noteReason(s.note) || t("offlineShort")
-           : s.state === "changed" ? t("changedHint")
+           : s.state === "changed" ? (getUpdate() ? t("updateOpen")(getUpdate().version) : t("changedHint"))
            : WEB_IDS.includes(s.id) ? t("dockSignIn") : t("howToConnect")
        )}</div>`;
   const trend = live ? dockTrend(s) : "";
@@ -308,6 +309,7 @@ function bindDock() {
     syncDockEdge();
     if (!PREVIEW) invoke("set_edge_enabled", { enabled: settings.edgeTuck }).catch(() => {});
   });
+  document.getElementById("dock-update").addEventListener("click", () => openUrl(updateUrl()));
   document.getElementById("dock-refresh").addEventListener("click", refresh);
   document.getElementById("dock-quit").addEventListener("click", () => invoke("quit").catch(() => {}));
 
@@ -342,7 +344,8 @@ function bindDock() {
     const id = tile.closest(".cell").dataset.id;
     // A quiet squircle is the way to fix it: web sign-in where the app can do
     // it, the settings page (which says how to connect) for the CLI-backed ones.
-    if (WEB_IDS.includes(id)) signIn(id);
+    if (dockChipState(id) === "changed" && getUpdate()) openUrl(updateUrl());
+    else if (WEB_IDS.includes(id)) signIn(id);
     else showView("settings");
   });
   dock.addEventListener("keydown", (e) => {

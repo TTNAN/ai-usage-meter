@@ -17,6 +17,8 @@
 mod commands;
 mod lock;
 mod poller;
+mod updater;
+mod version;
 mod web;
 mod window;
 
@@ -37,6 +39,7 @@ use tauri::{
 };
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_notification::NotificationExt;
+use updater::check_for_update;
 use window::{
     apply_shortcut, main_window, settle_window, show_window, slide_window, store_anchor,
     toggle_window, DEFAULT_SHORTCUT,
@@ -357,6 +360,7 @@ fn main() {
             get_autostart,
             set_autostart,
             app_info,
+            check_for_update,
             open_url,
             web_logins,
             web_login,

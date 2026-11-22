@@ -11,6 +11,7 @@ import {
   applyShortcut,
 } from "../shortcut.js";
 import { syncDockEdge } from "./dock.js";
+import { manualCheck, paintUpdate } from "../update.js";
 import { applyI18n, render, signIn, loadLogins } from "../../main.js";
 
 function renderColorRows() {
@@ -134,6 +135,26 @@ function bindSettings() {
     if (!PREVIEW) invoke("set_edge_enabled", { enabled: settings.edgeTuck }).catch(() => {});
   });
   if (!PREVIEW) invoke("set_edge_enabled", { enabled: settings.edgeTuck }).catch(() => {});
+
+  // "Check for updates": a manual check answers whatever the 24h throttle
+  // says, and the note under the button repeats the answer in words.
+  const check = document.getElementById("check-update");
+  check.addEventListener("click", async () => {
+    check.disabled = true;
+    const note = document.getElementById("update-note");
+    note.hidden = true;
+    const res = await manualCheck();
+    check.disabled = false;
+    if (res.ok && res.update) {
+      paintUpdate();
+      note.textContent = t("updateAvailable")(res.update.version);
+    } else if (res.ok) {
+      note.textContent = t("upToDate");
+    } else {
+      note.textContent = t("updateUnreachable");
+    }
+    note.hidden = false;
+  });
 }
 
 function bindColorRows() {

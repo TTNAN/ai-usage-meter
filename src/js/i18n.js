@@ -122,6 +122,12 @@ const STRINGS = {
       `${name} answered in a format this app doesn't understand — its API has probably changed. Check for an app update.`,
     changedShort: "API changed",
     changedHint: "update the app",
+    updateAvailable: (v) => `v${v} available`,
+    checkUpdate: "Check for updates",
+    checkUpdateBtn: "Check",
+    upToDate: "You're on the latest version.",
+    updateUnreachable: "Couldn't reach GitHub — try again later.",
+    updateOpen: (v) => `Update to v${v}`,
     // The short reason a failed fetch puts in `note`, said in this language;
     // anything else (an `HTTP 502`, say) is already readable as it is.
     reason: {
@@ -253,6 +259,12 @@ const STRINGS = {
       `${name} 的返回格式变了，本应用暂时读不懂（服务可能改了接口）。看看有没有新版本。`,
     changedShort: "接口变了",
     changedHint: "需要更新应用",
+    updateAvailable: (v) => `v${v} 可用`,
+    checkUpdate: "检查更新",
+    checkUpdateBtn: "检查",
+    upToDate: "已是最新版本。",
+    updateUnreachable: "暂时连不上 GitHub，稍后再试。",
+    updateOpen: (v) => `更新到 v${v}`,
     reason: {
       "timed out": "超时",
       "offline or blocked": "离线或被拦截",
