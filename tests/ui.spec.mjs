@@ -10,15 +10,47 @@ import { test, expect } from "@playwright/test";
 const PORT = process.env.UI_PORT || "4173";
 const url = (q = "") => `http://127.0.0.1:${PORT}/${q}`;
 
-// Frozen time so countdowns and sparkline samples read the same on every run.
+// Frozen time so countdowns and sparkline samples read the same on every run,
+// and an empty `localStorage` at the start of every test — but only on the
+// test's first page. The app keeps its choices there, and a test that walks
+// from Settings to the Dock has to find what Settings stored; `sessionStorage`
+// survives those navigations and remembers the wipe, while a new test gets a
+// fresh context and so starts empty again.
 const NOW = 1766366400000;
 test.beforeEach(async ({ context }) => {
   await context.addInitScript(`(() => {
     Date.now = () => ${NOW};
     Date.prototype.getTime = () => ${NOW};
-    localStorage.clear();
+    try {
+      if (sessionStorage.getItem("ui-spec-fresh")) return;
+      sessionStorage.setItem("ui-spec-fresh", "1");
+      localStorage.clear();
+    } catch (_) {}
   })()`);
 });
+
+// The shortcut control: the Custom pill, and the preset that stands for
+// ⌘⇧U / Ctrl+Shift+U. `localStorage` holds no `shortcut` until the user picks
+// one — the preset is only the fallback the page reads, so "nothing was
+// overwritten" means that preset is still the one switched on.
+const customPill = (page) => page.locator("#sc-custom");
+const presetU = (page) =>
+  page.locator(
+    '.seg[data-setting="shortcut"] button[data-value="CommandOrControl+Shift+U"]'
+  );
+const storedShortcut = (page, key = "shortcut") =>
+  page.evaluate((k) => localStorage.getItem(k), key);
+
+async function expectPresetChordHeld(page) {
+  await expect(customPill(page)).toHaveText(/^(Custom|自定义)$/);
+  await expect(customPill(page)).not.toHaveClass(/\bon\b/);
+  await expect(presetU(page)).toHaveClass(/\bon\b/);
+  await expect(presetU(page)).toHaveText(/Ctrl\+Shift\+U|⌘⇧U/);
+  expect(await storedShortcut(page)).toBeNull();
+  expect(await storedShortcut(page, "last-shortcut")).toBe(
+    "CommandOrControl+Shift+U"
+  );
+}
 
 // A page run with zero console errors and zero page errors is the baseline for
 // every view: the module split must not so much as warn.
@@ -84,10 +116,21 @@ test.describe("global shortcut recorder", () => {
   test("rejects a bare letter", async ({ page }) => {
     await page.click("#sc-custom");
     await page.keyboard.press("b");
+    // It says what a chord needs instead of taking the letter, and keeps
+    // listening: the pill still asks for keys, the note explains.
     const note = page.locator("#shortcut-note");
     await expect(note).toBeVisible();
-    // The chord the settings came with is untouched.
-    await expect(page.locator("#sc-custom")).toHaveText(/Ctrl\+Shift\+U|⌘⇧U/);
+    await expect(note).toContainText(/Hold .*with a key|按住 .*再加一个键/);
+    await expect(customPill(page)).toHaveText(/Press keys…|请按组合键…/);
+    await expect(customPill(page)).toHaveClass(/\brec\b/);
+    // The chord the settings came with is untouched, in the controls and in
+    // what is stored: nothing was recorded.
+    await expect(presetU(page)).toHaveClass(/\bon\b/);
+    expect(await storedShortcut(page)).toBeNull();
+    // Esc is the way out, and it leaves the chord where it was.
+    await page.keyboard.press("Escape");
+    await expectPresetChordHeld(page);
+    await expect(note).toBeHidden();
   });
 
   test("accepts a bare function key", async ({ page }) => {
@@ -109,20 +152,16 @@ test.describe("global shortcut recorder", () => {
 
   test("Escape cancels without overwriting", async ({ page }) => {
     await page.click("#sc-custom");
+    await expect(customPill(page)).toHaveText(/Press keys…|请按组合键…/);
     await page.keyboard.press("Escape");
-    await expect(page.locator("#sc-custom")).toHaveText(/Ctrl\+Shift\+U|⌘⇧U/);
-    expect(await page.evaluate(() => localStorage.getItem("shortcut"))).toBe(
-      "CommandOrControl+Shift+U"
-    );
+    // The pill goes back to its idle word; the preset is still the chord.
+    await expectPresetChordHeld(page);
   });
 
   test("Tab leaves the recorder and keeps the chord", async ({ page }) => {
     await page.click("#sc-custom");
     await page.keyboard.press("Tab");
-    await expect(page.locator("#sc-custom")).toHaveText(/Ctrl\+Shift\+U|⌘⇧U/);
-    expect(await page.evaluate(() => localStorage.getItem("shortcut"))).toBe(
-      "CommandOrControl+Shift+U"
-    );
+    await expectPresetChordHeld(page);
   });
 
   test("Ctrl+Tab switches away instead of being recorded", async ({ page }) => {
@@ -130,7 +169,7 @@ test.describe("global shortcut recorder", () => {
     await page.keyboard.down("Control");
     await page.keyboard.press("Tab");
     await page.keyboard.up("Control");
-    await expect(page.locator("#sc-custom")).toHaveText(/Ctrl\+Shift\+U|⌘⇧U/);
+    await expectPresetChordHeld(page);
   });
 });
 
@@ -138,21 +177,27 @@ test.describe("the Dock view's controls", () => {
   test("toggle remembers the last shortcut, not the first preset", async ({
     page,
   }) => {
-    // Record F7 in settings first.
+    // Record F7 in settings first: the chord is stored under `shortcut`, and
+    // under `last-shortcut` as the one the switches come back to.
     await page.goto(url("/?view=settings"));
     await page.waitForTimeout(400);
     await page.click("#sc-custom");
     await page.keyboard.press("F7");
-    await expect(page.locator("#sc-custom")).toHaveText(/^F7$/);
+    await expect(customPill(page)).toHaveText(/^F7$/);
+    expect(await storedShortcut(page)).toBe("F7");
 
-    // Dock's switch turns it off and back on to the recorded chord.
+    // Dock's switch turns it off and back on to the recorded chord — the page
+    // reads `shortcut` / `last-shortcut` afresh, so this walks the storage.
     await page.goto(url("/?view=dock&colors=1"));
     await page.waitForTimeout(500);
     await expect(page.locator("#dock-shortcut")).toHaveText(/^F7$/);
     await page.click("#dock-shortcut");
     await expect(page.locator("#dock-shortcut")).toHaveText(/Off|关闭/);
+    expect(await storedShortcut(page)).toBe("");
+    expect(await storedShortcut(page, "last-shortcut")).toBe("F7");
     await page.click("#dock-shortcut");
     await expect(page.locator("#dock-shortcut")).toHaveText(/^F7$/);
+    expect(await storedShortcut(page)).toBe("F7");
   });
 
   test("colours drawer opens, paints and resets", async ({ page }) => {
@@ -175,7 +220,9 @@ test.describe("the Dock view's controls", () => {
   });
 
   test("window width follows the tiles", async ({ page }) => {
-    await page.goto(url("/?view=dock&state=three"));
+    // `state=three` leaves two services unconnected; `hide=1` is what takes
+    // their tiles out of the Dock, so three are left to size the window.
+    await page.goto(url("/?view=dock&state=three&hide=1"));
     await page.waitForTimeout(500);
     await expect(page.locator("#dock .cell")).toHaveCount(3);
     expect(await page.evaluate(() => document.getElementById("panel").style.width)).toBe(
