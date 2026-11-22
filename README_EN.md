@@ -38,6 +38,7 @@ Tired of hitting "usage limit reached" mid-task? AI Usage Meter puts every 5-hou
 - **See where a number is going** — every row keeps a short local history and draws it as a 36×12 sparkline; at the recent rate it estimates "~1h 42m left", but only when that actually lands before the reset. A quiet service adds nothing.
 - **Warned before the wall** — a native notification when a service drops to 15 % left, and one more when it goes under 5 %; each step is announced once per reset window, and "Low-quota alerts" in Settings turns the whole thing off. The alert speaks the interface language (English or Chinese).
 - **One global shortcut** — `⌘⇧U` / `Ctrl+Shift+U` brings the popover up, or puts it away, from any app. Settings can switch it to `⌘⇧A`, record any combination of its own (press Custom, then the keys — `Esc` cancels), or turn it off, and says so plainly when another app already owns the combination.
+- **A quiet update check** — at most one silent GitHub Releases request a day (8s timeout; a failure counts as no news). When a newer release exists, a small "v0.8.0 available" pill appears beside the footer version in both views and opens the release page; Settings has a "Check for updates" button for an on-demand answer; and when an API has moved and a fix is already out, that row points straight at it.
 - **Plan aware** — picks up Max, Pro, Plus, SuperGrok, Ultra, Individual and friends.
 - **Zero setup** — reuses the logins of the ChatGPT desktop app (Codex), Claude Code, Grok Build, Gemini CLI / Antigravity and the GitHub CLI / Copilot CLI. Only use Claude or Grok on the web or in their apps? Sign in once in Settings. Gemini's access token expires after an hour: the app renews it with the refresh token and writes it back to `~/.gemini/oauth_creds.json`, so you never have to run `gemini` again.
 - **Live** — re-reads every 1 to 5 minutes in the background, so usage from the web, the apps or the CLI shows up as it happens.
@@ -68,6 +69,21 @@ xattr -cr "/Applications/AI Usage Meter.app"
 > The app is not notarised yet, so if macOS blocks the first launch, right-click → Open (or run the command above) once and it opens normally from then on.
 >
 > Linux: install the `.deb` with `sudo apt install ./AI.Usage.Meter_0.7.1_amd64.deb`, or `chmod +x` the `.AppImage` and run it (AppImage needs FUSE, or use `--appimage-extract-and-run`). A Wayland session grants no global shortcut and lets no app place its own window, so neither the shortcut nor edge tucking is available there — Settings says so.
+
+### Package managers
+
+The quieter way in — the manifests for all three platforms live in
+[`packaging/`](packaging/README.md) and track every release:
+
+| Platform | Command |
+| --- | --- |
+| macOS (Homebrew, [own tap](packaging/README.md#homebrew-ttnanhomebrew-tap)) | `brew tap TTNAN/homebrew-tap && brew install --cask ai-usage-meter` |
+| Windows (Scoop, [own bucket](packaging/README.md#scoop-ttnanscoop-bucket)) | `scoop bucket add ttnan https://github.com/TTNAN/scoop-bucket && scoop install ai-usage-meter` |
+| Arch Linux (AUR) | `yay -S ai-usage-meter-bin` |
+
+The Homebrew cask strips macOS's quarantine attribute after installing, so no
+manual `xattr` needed.
+
 
 Then sign in to whichever tools you use (the rest just show "Not connected"):
 

@@ -1,0 +1,39 @@
+# Maintainer: TTNAN <thnssssss7@gmail.com>
+# The -bin package unpacks the official .deb release, so the binary is exactly
+# the one the project's CI builds and the GitHub Release ships.
+pkgname=ai-usage-meter-bin
+pkgver=0.7.1
+pkgrel=1
+pkgdesc="Claude, ChatGPT (Codex), Grok, Gemini and Copilot quota — a rings popover or a dock panel, from your system tray"
+arch=('x86_64')
+url="https://github.com/TTNAN/ai-usage-meter"
+license=('MIT')
+# The runtime libraries the .deb itself declares (webkit2gtk-4.1, gtk3 and the
+# AppIndicator tray), in their Arch package names.
+depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator')
+optdepends=('libnotify: desktop notifications for the low-quota alerts')
+provides=('ai-usage-meter')
+conflicts=('ai-usage-meter' 'ai-usage-meter-appimage')
+source=("ai-usage-meter-${pkgver}.deb::https://github.com/TTNAN/ai-usage-meter/releases/download/v${pkgver}/AI.Usage.Meter_${pkgver}_amd64.deb")
+sha256sums=('6b5a8ae9bf5df738a215eac97284706ffc326069c8e66a479adc21036cf522b7')
+noextract=()
+
+package() {
+    cd "${srcdir}"
+
+    # Unpack the .deb (an `ar` archive holding control.tar.* and data.tar.*)
+    # and lay the data payload onto the filesystem root.
+    ar x "${srcdir}/ai-usage-meter-${pkgver}.deb"
+    local data
+    data=$(ls "${srcdir}"/data.tar.* 2>/dev/null | head -n1)
+    case "${data}" in
+        *.zst) tar --zstd -xf "${data}" -C "${pkgdir}" ;;
+        *.xz)  tar -xJf "${data}" -C "${pkgdir}" ;;
+        *)     tar -xzf "${data}" -C "${pkgdir}" ;;
+    esac
+
+    if [[ ! -x "${pkgdir}/usr/bin/ai-usage-meter" ]]; then
+        echo "ai-usage-meter binary missing from the .deb payload" >&2
+        return 1
+    fi
+}

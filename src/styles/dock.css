@@ -1,0 +1,382 @@
+/* ------------------------------------------------------------- dock */
+/* The Dock view is the original ai-usage-meter-dock design, ported whole:
+   one pill toggle above (numbers, then the view switch), brand squircles
+   rising out of a dark tray with the names under it, then a single row of
+   status chips and four quiet buttons, and the 服务配色 drawer under that.
+   Everything is scoped to .view-dock so the rings popover is untouched, and
+   every surface goes through the --dock-* variables, so the light theme is
+   the same layout in a different palette. */
+
+html .panel[data-view="dock"]:not(.settings-open) {
+  --dock-ink: #ececf1;
+  --dock-ink-2: rgba(255, 255, 255, 0.62);
+  --dock-ink-3: rgba(255, 255, 255, 0.42);
+  --dock-hair: rgba(255, 255, 255, 0.08);
+  --dock-hair-2: rgba(255, 255, 255, 0.16);
+  --dock-raise: rgba(255, 255, 255, 0.03);
+  --dock-raise-hover: rgba(255, 255, 255, 0.07);
+  --dock-surface: #0b0b13;
+  --dock-tray: #151517;
+  --dock-pill: rgba(255, 255, 255, 0.06);
+  --dock-pill-ink: rgba(255, 255, 255, 0.45);
+  --dock-pill-on: #f2f2f4;
+  --dock-pill-on-ink: #111114;
+  --dock-tray-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.6),
+    0 2px 8px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --dock-tile-shadow: 0 12px 28px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+
+  width: max-content;
+  padding: 30px 12px 22px;
+  background: var(--dock-surface);
+  border-radius: 16px;
+  box-shadow: none;
+  overflow: visible;
+  align-items: center;
+}
+@media (prefers-color-scheme: light) {
+  html .panel[data-view="dock"]:not(.settings-open) {
+    --dock-ink: #18181b;
+    --dock-ink-2: rgba(24, 24, 27, 0.66);
+    --dock-ink-3: rgba(24, 24, 27, 0.5);
+    --dock-hair: rgba(0, 0, 0, 0.08);
+    --dock-hair-2: rgba(0, 0, 0, 0.12);
+    --dock-raise: rgba(0, 0, 0, 0.03);
+    --dock-raise-hover: rgba(0, 0, 0, 0.06);
+    --dock-surface: #f7f7f9;
+    --dock-tray: #e9e9ef;
+    --dock-pill: rgba(0, 0, 0, 0.05);
+    --dock-pill-ink: rgba(24, 24, 27, 0.5);
+    --dock-pill-on: #18181b;
+    --dock-pill-on-ink: #ffffff;
+    --dock-tray-shadow:
+      0 20px 40px rgba(24, 24, 40, 0.16),
+      0 2px 8px rgba(0, 0, 0, 0.07),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    --dock-tile-shadow: 0 10px 22px rgba(24, 24, 40, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  }
+}
+
+.view-dock {
+  padding: 0; animation: viewIn 0.28s var(--ease);
+  /* A flex column, like the original panel: block siblings would collapse the
+     pill's 16 px into the tray's 44 px and lift the whole dock too high. */
+  display: flex; flex-direction: column; align-items: center;
+  /* One face for the whole dock, as in the original: Inter for every label,
+     JetBrains Mono for the numbers that tick. */
+  font-family: "Inter Dock", -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  line-height: normal;
+}
+
+/* The pill row above the tray: numbers on the left, the view switch beside
+   it, both drawn as the same pill so the pair reads as one control. */
+.view-dock .dock-bar {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin-bottom: 16px;
+}
+.view-dock .dock-bar .seg {
+  display: inline-flex; gap: 2px; padding: 3px;
+  background: var(--dock-pill);
+  border: 1px solid var(--dock-hair);
+  border-radius: 999px;
+  box-shadow: none;
+}
+.view-dock .dock-bar .seg button {
+  font-size: 12.5px; font-weight: 600; letter-spacing: 0.03em;
+  color: var(--dock-pill-ink);
+  padding: 4px 16px; border-radius: 999px;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.view-dock .dock-bar .seg button:hover { color: var(--dock-ink); }
+.view-dock .dock-bar .seg button.on {
+  background: var(--dock-pill-on);
+  color: var(--dock-pill-on-ink);
+  box-shadow: none;
+}
+
+/* The tray: a dark pane under the squircles, which sit a third of the way
+   above its top edge. */
+.view-dock .dock {
+  display: flex; justify-content: center;
+  /* The tray spans the panel (the page sizes the window from the cells), so a
+     three-service dock and the row under it stay one block. */
+  width: 100%;
+  margin-top: 44px;
+  background: var(--dock-tray);
+  border: 1px solid var(--dock-hair);
+  border-radius: 36px;
+  padding: 0 24px 26px;
+  box-shadow: var(--dock-tray-shadow);
+}
+.view-dock .cell { width: 132px; display: flex; flex-direction: column; align-items: center; }
+.view-dock .cell + .cell { margin-left: 14px; }
+
+/* The squircle: 1:1, flat brand colour, the mark at the top, one line of
+   numbers, a hairline bar, the countdown — and the trend line just under
+   the tile, on the tray. */
+.view-dock .tile {
+  margin-top: -30px; width: 124px; height: 124px; border-radius: 26px;
+  display: flex; flex-direction: column; align-items: center;
+  box-shadow: var(--dock-tile-shadow);
+  overflow: hidden;
+}
+.view-dock .tile-chatgpt { background: #ffffff; }
+.view-dock .tile-claude { background: #d97757; }
+.view-dock .tile-grok { background: #0d0d10; box-shadow: var(--dock-tile-shadow), inset 0 0 0 0.5px rgba(255, 255, 255, 0.14); }
+.view-dock .tile-gemini { background: #eff3fd; box-shadow: var(--dock-tile-shadow), inset 0 0 0 0.5px rgba(0, 0, 0, 0.10); }
+.view-dock .tile-copilot { background: #17252a; box-shadow: var(--dock-tile-shadow), inset 0 0 0 0.5px rgba(255, 255, 255, 0.10); }
+
+.view-dock .mark { margin-top: 12px; width: 38px; height: 38px; display: grid; place-items: center; }
+.view-dock .mark i {
+  width: 38px; height: 38px; display: block;
+  background: currentColor;
+  -webkit-mask: var(--glyph) center / contain no-repeat;
+  mask: var(--glyph) center / contain no-repeat;
+}
+.view-dock .mark img { width: 36px; height: 36px; display: block; }
+.view-dock .tile-chatgpt .mark { color: #101014; }
+.view-dock .tile-chatgpt .mark i { --glyph: url("../icons/codex.svg"); }
+.view-dock .tile-claude .mark { color: #ffffff; }
+.view-dock .tile-claude .mark i { --glyph: url("../icons/claude.svg"); }
+.view-dock .tile-grok .mark { color: #ffffff; }
+.view-dock .tile-grok .mark i { --glyph: url("../icons/grok.svg"); width: 30px; height: 30px; }
+.view-dock .tile-copilot .mark { color: #ffffff; }
+.view-dock .tile-copilot .mark i { --glyph: url("../icons/copilot.svg"); width: 34px; height: 34px; }
+
+/* Two faces, used consistently: Inter for the big number and its sign,
+   JetBrains Mono for the countdown — the original dock's own pairing. */
+.view-dock .pct-line {
+  margin-top: 7px; display: flex; align-items: baseline; gap: 4px;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.view-dock .pct-line > * { flex-shrink: 0; }
+.view-dock .pct-line .num,
+.view-dock .pct-line .pct-sign {
+  font-family: "Inter Dock", -apple-system, "Segoe UI", sans-serif;
+  font-size: 19px; font-weight: 700; letter-spacing: -0.02em; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.view-dock .pct-line .tag-mode {
+  font-size: 13px; font-weight: 700; letter-spacing: 0.02em; margin-left: 1px;
+}
+.view-dock .tile-chatgpt .num, .view-dock .tile-chatgpt .pct-sign, .view-dock .tile-chatgpt .tag-mode { color: #2f6fed; }
+.view-dock .tile-claude .num, .view-dock .tile-claude .pct-sign, .view-dock .tile-claude .tag-mode { color: #ffffff; }
+.view-dock .tile-grok .num, .view-dock .tile-grok .pct-sign, .view-dock .tile-grok .tag-mode { color: #ffffff; }
+.view-dock .tile-gemini .num, .view-dock .tile-gemini .pct-sign, .view-dock .tile-gemini .tag-mode { color: #1b2559; }
+.view-dock .tile-copilot .num, .view-dock .tile-copilot .pct-sign, .view-dock .tile-copilot .tag-mode { color: #f2f7f5; }
+
+.view-dock .bar {
+  margin-top: 8px; width: 96px; height: 3.5px; border-radius: 2px; overflow: hidden;
+}
+.view-dock .tile-chatgpt .bar { background: rgba(47, 111, 237, 0.18); }
+.view-dock .tile-claude .bar { background: rgba(255, 255, 255, 0.25); }
+.view-dock .tile-grok .bar { background: rgba(255, 255, 255, 0.16); }
+.view-dock .tile-gemini .bar { background: rgba(27, 37, 89, 0.14); }
+.view-dock .tile-copilot .bar { background: rgba(52, 211, 153, 0.2); }
+.view-dock .bar > i { display: block; height: 100%; border-radius: 2px; transition: width 0.8s var(--ease); }
+.view-dock .tile-chatgpt .bar i { background: #2f6fed; }
+.view-dock .tile-claude .bar i { background: #ffffff; }
+.view-dock .tile-grok .bar i { background: #a78bfa; }
+.view-dock .tile-gemini .bar i { background: #3186ff; }
+.view-dock .tile-copilot .bar i { background: #34d399; }
+
+.view-dock .reset {
+  margin-top: 8px;
+  font-family: "JetBrains Mono Dock", ui-monospace, monospace;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+/* English's "resets in 10d 23h" is wider than a 124 px squircle: long
+   countdowns step down a point so they stay inside it, close to the edge. */
+.view-dock .reset.long { font-size: 10.5px; letter-spacing: -0.02em; }
+.view-dock .tile-chatgpt .reset { color: #2f6fed; }
+.view-dock .tile-claude .reset, .view-dock .tile-grok .reset { color: rgba(255, 255, 255, 0.85); }
+.view-dock .tile-gemini .reset { color: #33488f; }
+.view-dock .tile-copilot .reset { color: #6ee7b7; }
+
+/* The trend under each squircle, on the tray: a 30×8 line and the ETA, the
+   only place the dock spends on "when will it run out". */
+.view-dock .micro {
+  margin-top: 7px; height: 10px;
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  opacity: 0.72;
+}
+.view-dock .micro .spark { flex: none; }
+.view-dock .micro .spark polyline {
+  fill: none; stroke: currentColor; stroke-width: 1.1; opacity: 1;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.view-dock .micro .eta {
+  font-family: "JetBrains Mono Dock", ui-monospace, monospace;
+  font-size: 8.5px; font-weight: 600; letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.view-dock .cell[data-id="codex"] .micro { color: #6e9bff; }
+.view-dock .cell[data-id="claude"] .micro { color: #e08a6b; }
+.view-dock .cell[data-id="grok"] .micro { color: #a78bfa; }
+.view-dock .cell[data-id="gemini"] .micro { color: #38bdf8; }
+.view-dock .cell[data-id="copilot"] .micro { color: #34d399; }
+@media (prefers-color-scheme: light) {
+  .view-dock .cell[data-id="codex"] .micro { color: #3d74f0; }
+  .view-dock .cell[data-id="claude"] .micro { color: #c2623f; }
+  .view-dock .cell[data-id="grok"] .micro { color: #7c4dff; }
+  .view-dock .cell[data-id="gemini"] .micro { color: #0e93a2; }
+  .view-dock .cell[data-id="copilot"] .micro { color: #2f9e51; }
+}
+
+/* A service with no numbers keeps its place: the mark faded, "--" where the
+   number goes, and one word that says why. */
+.view-dock .tile.off { cursor: pointer; }
+.view-dock .tile.off:focus-visible { outline: 2px solid var(--dock-pill-on); outline-offset: 2px; }
+.view-dock .tile.off .mark { opacity: 0.5; }
+.view-dock .tile.off .num, .view-dock .tile.off .tag-mode { opacity: 0.6; }
+.view-dock .tile.off .reset { opacity: 0.75; }
+
+/* A colour picked in the drawer repaints this squircle's number, bar and
+   countdown; `--ink` is the contrast-safe version the page works out, and
+   the surface and the mark stay the brand's own. */
+.view-dock .cell.custom .tile .num,
+.view-dock .cell.custom .tile .pct-sign,
+.view-dock .cell.custom .tile .tag-mode { color: var(--ink); }
+.view-dock .cell.custom .bar { background: color-mix(in srgb, var(--ink) 18%, transparent); }
+.view-dock .cell.custom .bar i { background: var(--ink); }
+.view-dock .cell.custom .tile .reset { color: color-mix(in srgb, var(--ink) 82%, transparent); }
+
+/* The names, one under each squircle. */
+.view-dock .names { display: flex; justify-content: center; margin-top: 12px; }
+.view-dock .names span {
+  width: 132px; text-align: center;
+  font-size: 15px; font-weight: 600; letter-spacing: 0.02em;
+  color: var(--dock-ink);
+}
+.view-dock .names span + span { margin-left: 14px; }
+
+/* One row: the connection state of every service on the left, the four
+   quiet controls on the right. */
+.view-dock .dock-foot {
+  width: 100%;
+  margin-top: 18px; padding-top: 12px;
+  border-top: 1px solid var(--dock-hair);
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 6px 8px; flex-wrap: wrap;
+}
+.view-dock .logins { display: flex; gap: 5px; flex-wrap: wrap; }
+.view-dock .chip {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 10.5px; font-weight: 600; color: var(--dock-ink-3);
+  padding: 4px 8px; border-radius: 999px;
+  border: 1px solid var(--dock-hair);
+  background: var(--dock-raise);
+  letter-spacing: 0.01em; white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.view-dock .chip:hover { background: var(--dock-raise-hover); color: var(--dock-ink-2); }
+.view-dock .chip .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  border: 1.5px solid var(--dock-ink-3); flex-shrink: 0;
+  background: none; transform: none;
+}
+.view-dock .chip.on { color: var(--dock-ink); }
+.view-dock .chip.on .dot { background: var(--dock-ink); border-color: var(--dock-ink); }
+.view-dock .foot-actions { display: flex; gap: 5px; flex-shrink: 0; margin-left: auto; }
+.view-dock .foot-actions button {
+  font-size: 11px; font-weight: 600; color: var(--dock-ink-3);
+  padding: 4px 9px; border-radius: 999px;
+  border: 1px solid var(--dock-hair);
+  background: var(--dock-raise);
+  transition: background 0.15s, color 0.15s;
+}
+.view-dock .foot-actions button:hover { background: var(--dock-raise-hover); color: var(--dock-ink); }
+.view-dock .foot-actions button.spinning { opacity: 0.5; }
+.view-dock .foot-actions button.on {
+  color: var(--dock-ink); background: var(--dock-raise-hover); border-color: var(--dock-hair-2);
+}
+
+/* The 服务配色 drawer: one glass card under the row, one cell per service,
+   and the shortcut switch along its foot. */
+.view-dock .colorbar {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 14px 12px; border-radius: 14px;
+  background: var(--dock-raise-hover);
+  border: 1px solid var(--dock-hair);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 10px 24px rgba(0, 0, 0, 0.35);
+  animation: cbIn 0.2s ease-out;
+}
+@media (prefers-color-scheme: light) {
+  .view-dock .colorbar {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 10px 24px rgba(24, 24, 40, 0.10);
+  }
+}
+@keyframes cbIn { from { opacity: 0; transform: translateY(-4px); } }
+.view-dock .cb-head { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.view-dock .cb-title {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--dock-ink-2);
+  white-space: nowrap;
+}
+.view-dock .cb-note { font-size: 10.5px; color: var(--dock-ink-3); }
+.view-dock .cb-head button {
+  margin-left: auto; font-size: 10.5px; font-weight: 600; color: var(--dock-ink-3);
+  padding: 3px 9px; border-radius: 999px; border: 1px solid var(--dock-hair);
+  background: var(--dock-raise); white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.view-dock .cb-head button:hover { background: var(--dock-raise-hover); color: var(--dock-ink); }
+.view-dock .cb-grid { display: grid; grid-template-columns: repeat(var(--cells, 5), minmax(0, 1fr)); gap: 8px; }
+.view-dock .cb-item {
+  padding: 7px 9px 8px; border-radius: 10px;
+  background: var(--dock-raise); border: 1px solid var(--dock-hair);
+}
+.view-dock .cb-top { display: flex; align-items: center; }
+.view-dock .cb-name { font-size: 11.5px; font-weight: 600; color: var(--dock-ink-2); letter-spacing: 0.01em; }
+.view-dock .cb-reset {
+  margin-left: auto; width: 15px; height: 15px; border-radius: 5px; flex-shrink: 0;
+  display: grid; place-items: center; color: var(--dock-ink-3);
+}
+.view-dock .cb-reset:hover { background: var(--dock-raise-hover); color: var(--dock-ink); }
+.view-dock .cb-reset:disabled { opacity: 0.3; }
+.view-dock .cb-reset:disabled:hover { background: none; color: var(--dock-ink-3); }
+.view-dock .cb-reset svg { width: 10px; height: 10px; }
+.view-dock .cb-mid { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
+.view-dock .cb-swatch {
+  position: relative; width: 15px; height: 15px; border-radius: 5px; flex-shrink: 0;
+  background: var(--sw); overflow: hidden;
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.28), 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.view-dock .cb-swatch:hover { box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4); }
+.view-dock .cb-swatch input {
+  position: absolute; inset: -5px; width: calc(100% + 10px); height: calc(100% + 10px);
+  opacity: 0; border: 0; padding: 0; background: none; cursor: pointer;
+}
+.view-dock .cb-hex {
+  font-family: "JetBrains Mono Dock", ui-monospace, monospace;
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0.01em;
+  color: var(--dock-ink-3); font-variant-numeric: tabular-nums;
+}
+.view-dock .cb-presets { display: flex; gap: 4px; margin-top: 7px; }
+.view-dock .cb-presets button {
+  width: 10px; height: 10px; border-radius: 50%; background: var(--p);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.22), 0 1px 1px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease;
+}
+.view-dock .cb-presets button:hover { transform: scale(1.25); }
+.view-dock .cb-presets button.on { box-shadow: 0 0 0 1.5px var(--dock-surface), 0 0 0 2.5px var(--p); }
+.view-dock .cb-foot {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 9px; padding-top: 9px;
+  border-top: 1px solid var(--dock-hair);
+}
+.view-dock .cb-foot .cb-note { margin-right: auto; }
+.view-dock .cb-foot button {
+  font-family: "JetBrains Mono Dock", ui-monospace, monospace;
+  font-size: 10.5px; font-weight: 600; color: var(--dock-ink-3);
+  padding: 3px 10px; border-radius: 999px; border: 1px solid var(--dock-hair);
+  background: var(--dock-raise); white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.view-dock .cb-foot button:hover { background: var(--dock-raise-hover); color: var(--dock-ink); }
+.view-dock .cb-foot button.on {
+  color: var(--dock-ink); background: var(--dock-raise-hover); border-color: var(--dock-hair-2);
+}

@@ -38,6 +38,7 @@
 - **额度在往哪走也看得见** — 每行记一小段本机历史，用一条 36×12 的迷你折线画出走势；按最近的速度估算「约多久用完」，只在真的会在重置前来得及用完时才写出来，安静的额度不多占一行。
 - **快用完时会提前说话** — 哪家额度只剩 15% 时发一条系统通知，跌破 5% 再提醒一次；同一个窗口、同一档只提醒一次，重置后重新开始，设置里的「低额度提醒」可以关掉。通知跟着界面语言走（中文或英文）。
 - **全局快捷键** — 默认 `⌘⇧U` / `Ctrl+Shift+U`，在任何应用里都能唤出或收起弹窗；设置里可换成 `⌘⇧A`、录制自己的组合键（点“自定义”后直接按，`Esc` 取消），或关掉；被别的应用占用时会如实说明。
+- **更新检查不打扰** — 应用每天最多静默问一次 GitHub Releases（8 秒超时，失败就当没问过），有新版本时页脚版本号旁出现一枚安静的「v0.8.0 可用」胶囊，点击直达发布页；设置底部有「检查更新」可以随时手动问一次；哪家的接口变了、而新版本已经修好时，那一行会直接给出「更新到 vX.Y.Z」的入口。
 - **订阅档位** — 自动识别 Max、Pro、Plus、SuperGrok、Ultra、Individual 等档位。
 - **零配置** — 直接复用 ChatGPT 桌面版（Codex）、Claude Code、Grok Build、Gemini CLI / Antigravity、GitHub CLI / Copilot CLI 已有的登录；只用 Claude / Grok 网页版或 App？在设置里登录一次账号就行。Gemini 的访问令牌一小时就过期，应用会拿 refresh token 自己续上并写回 `~/.gemini/oauth_creds.json`，不用再跑一次 `gemini`。
 - **实时跟着变** — 后台每 1 到 5 分钟自动重读，你在网页、App、命令行哪里用掉的额度都会同步显示。
@@ -68,6 +69,19 @@ xattr -cr "/Applications/AI Usage Meter.app"
 > 应用尚未公证，所以首次打开被 macOS 拦下时，右键 → 打开，或者运行上面这行命令即可；之后就能正常双击启动了。
 >
 > Linux：`.deb` 用 `sudo apt install ./AI.Usage.Meter_0.7.1_amd64.deb` 安装；`.AppImage` 加 `chmod +x` 后直接运行（AppImage 需要 FUSE，或用 `--appimage-extract-and-run`）。Wayland 会话下没有全局快捷键，也不能贴边——这是 Wayland 的限制，应用会在设置里说明。
+
+### 包管理器
+
+更省事的装法——三个平台的清单都在 [`packaging/`](packaging/README.md) 里，发新版本时跟着 Release 一起更新：
+
+| 平台 | 命令 |
+| --- | --- |
+| macOS（Homebrew，[自建 tap](packaging/README.md#homebrew-ttnanhomebrew-tap)） | `brew tap TTNAN/homebrew-tap && brew install --cask ai-usage-meter` |
+| Windows（Scoop，[自建 bucket](packaging/README.md#scoop-ttnanscoop-bucket)） | `scoop bucket add ttnan https://github.com/TTNAN/scoop-bucket && scoop install ai-usage-meter` |
+| Arch Linux（AUR） | `yay -S ai-usage-meter-bin` |
+
+Homebrew cask 会在装完后自动摘掉 macOS 的隔离属性，不用再手动 `xattr`。
+
 
 然后登录你在用的工具（用哪个登哪个，没登录的会显示「未连接」）：
 
