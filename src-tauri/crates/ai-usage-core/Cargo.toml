@@ -1,6 +1,6 @@
 [package]
 name = "ai-usage-core"
-version = "0.7.1"
+version = "0.8.0"
 description = "Usage providers, low-quota alert rules, the menu-bar icon and the screen-edge maths behind AI Usage Meter's rings popover and compact dock bar."
 authors = ["TTNAN"]
 license = "MIT"
