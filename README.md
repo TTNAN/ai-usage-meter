@@ -49,7 +49,43 @@
 - **安静可靠** — 后台低频轮询、手动刷新有限速；单次请求失败会保留上次读数并标注，绝不编造数字。
 - **轻** — Tauri v2 + 原生 HTML/CSS/JS，没有 Node 依赖，没有前端打包器。
 
-<p align="center"><img src="docs/states.png" alt="中文界面、服务配色、首次启动和浅色模式" width="880" /></p>
+## 界面展示
+
+演示数据下的真实界面，点任意一张看大图。
+
+<table align="center">
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/dock-colors.png" alt="Dock 视图里展开的服务配色抽屉" width="420" />
+      <br />
+      <sub><b>服务配色</b> · 点一下当场展开，颜色立刻跟着变</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/dock-fewer.png" alt="只连三家时的 Dock 视图，自动收窄到 496px" width="420" />
+      <br />
+      <sub><b>只连三家</b> · 没连的服务不占位，面板收窄到 496px</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/update-notice.png" alt="新版本提示，以及接口变动那一行的更新入口" width="420" />
+      <br />
+      <sub><b>更新提示</b> · 页脚安静的「v0.9.0 可用」，接口变了直接给更新入口</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/modes-used.png" alt="「已用」模式下的环图视图与 Dock 视图" width="420" />
+      <br />
+      <sub><b>已用 / 剩余</b> · 一键切换口径，走势和预计用完跟着走</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <img src="docs/states.png" alt="中文界面、服务配色、首次启动和浅色模式" width="880" />
+      <br />
+      <sub><b>中文界面 · 服务配色 · 首次启动 · 浅色模式</b></sub>
+    </td>
+  </tr>
+</table>
 
 ## 安装
 
