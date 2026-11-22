@@ -50,10 +50,11 @@ pub async fn check_for_update() -> UpdateInfo {
     match fetch_latest().await {
         Ok(Some(r)) => {
             let current = env!("CARGO_PKG_VERSION");
+            let tag = r.tag;
             UpdateInfo {
                 current_version: current.to_string(),
-                latest_version: Some(r.tag),
-                has_update: crate::version::update_available(current, &r.tag),
+                latest_version: Some(tag.clone()),
+                has_update: crate::version::update_available(current, &tag),
                 release_url: Some(r.url),
                 published_at: r.published_at,
                 reachable: true,
