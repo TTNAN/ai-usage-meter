@@ -42,6 +42,7 @@ Tired of hitting "usage limit reached" mid-task? AI Usage Meter puts every 5-hou
 - **Plan aware** — picks up Max, Pro, Plus, SuperGrok, Ultra, Individual and friends.
 - **Zero setup** — reuses the logins of the ChatGPT desktop app (Codex), Claude Code, Grok Build, Gemini CLI / Antigravity and the GitHub CLI / Copilot CLI. Only use Claude or Grok on the web or in their apps? Sign in once in Settings. Gemini's access token expires after an hour: the app renews it with the refresh token and writes it back to `~/.gemini/oauth_creds.json`, so you never have to run `gemini` again.
 - **Live** — re-reads every 1 to 5 minutes in the background, so usage from the web, the apps or the CLI shows up as it happens.
+- **Appearance on your terms** — Settings pins the face to Auto / Dark / Light (the native window follows too), and Panel opacity runs 40 %–100 %: only the surfaces thin out, the text and icons stay sharp.
 - **Feels native** — real macOS popover material, follows light and dark mode, opens from the icon and tucks away when you click elsewhere; a tray flyout on Windows, the tray menu on Linux (X11).
 - **Drops where you drop it, and docks to the edge** — drag it anywhere by the header or any empty spot; drop it against the left or right screen edge and it snaps there, slides off-screen when it loses focus leaving a 12 px grab handle, and slides back when you click that handle (or the menu-bar icon). "Tuck at screen edge" in Settings turns it off. (A Wayland session places windows itself, so the switch is greyed out there and says why.)
 - **Your colours** — Settings → Colors has one row per service: click the swatch for the system colour picker, or one of the presets, and the concentric rings, progress bars and accents follow at once; the Windows and Linux tray bars use the same colours. ↺ or "Reset all" restores each service's own accent. The dock's own Colors button opens the same set, right under the tray ([what it looks like](docs/dock-colors.png)).
@@ -89,7 +90,7 @@ Real screenshots, demo data — click any of them for the full size.
 
 ## Install
 
-Grab the latest from [Releases](https://github.com/TTNAN/ai-usage-meter/releases/latest) — [v0.8.0](https://github.com/TTNAN/ai-usage-meter/releases/tag/v0.8.0) today, with the macOS `.dmg`, the Windows `.exe` and `.msi`, and the Linux `.deb` and `.AppImage`:
+Grab the latest from [Releases](https://github.com/TTNAN/ai-usage-meter/releases/latest) — [v0.8.1](https://github.com/TTNAN/ai-usage-meter/releases/tag/v0.8.1) today, with the macOS `.dmg`, the Windows `.exe` and `.msi`, and the Linux `.deb` and `.AppImage`:
 
 | Platform | File | Notes |
 | --- | --- | --- |
@@ -104,7 +105,7 @@ xattr -cr "/Applications/AI Usage Meter.app"
 > [!TIP]
 > The app is not notarised yet, so if macOS blocks the first launch, right-click → Open (or run the command above) once and it opens normally from then on.
 >
-> Linux: install the `.deb` with `sudo apt install ./AI.Usage.Meter_0.8.0_amd64.deb`, or `chmod +x` the `.AppImage` and run it (AppImage needs FUSE, or use `--appimage-extract-and-run`). A Wayland session grants no global shortcut and lets no app place its own window, so neither the shortcut nor edge tucking is available there — Settings says so.
+> Linux: install the `.deb` with `sudo apt install ./AI.Usage.Meter_0.8.1_amd64.deb`, or `chmod +x` the `.AppImage` and run it (AppImage needs FUSE, or use `--appimage-extract-and-run`). A Wayland session grants no global shortcut and lets no app place its own window, so neither the shortcut nor edge tucking is available there — Settings says so.
 
 Then sign in to whichever tools you use (the rest just show "Not connected"):
 
@@ -219,6 +220,7 @@ Want another service (Cursor, Windsurf…)? Open an [issue](https://github.com/T
 - [x] The Dock edition folded into one app: rings and dock views (0.7.0)
 - [x] A Linux build: `.deb` and `.AppImage`, with a tray icon
 - [x] A lightweight in-app update check: GitHub Releases, at most once a day (0.8.0)
+- [x] A manual appearance switch (Auto / Dark / Light) and panel opacity (0.8.1)
 - [ ] More services: Cursor, Windsurf
 - [ ] Signed and notarised macOS builds
 

@@ -339,6 +339,86 @@ test.describe("view switching and the language switch", () => {
   });
 });
 
+// ------------------------------------------------------------ web logins
+// `web-logins` is how Rust tells the page that a sign-in finished — or was
+// forgotten — while the panel is open. The suite serves `src/` with no Tauri
+// behind it, so a test that wants that listener has to stand in for the
+// bridge: `window.__TAURI__` is what makes the page boot in app mode rather
+// than preview mode, and the stub keeps every `listen` callback so the test
+// can emit the event the way Rust does.
+const TAURI_STUB = `(() => {
+  const events = {};
+  window.__TAURI_EVENTS__ = events;
+  window.__TAURI__ = {
+    core: {
+      invoke: async (cmd) => {
+        if (cmd === "app_info") return { version: "0.8.1", platform: "linux", wayland: false };
+        if (cmd === "get_status") return [];
+        if (cmd === "edge_state") return { edge: "none", hidden: false };
+        if (cmd === "web_logins") return [];
+        return null;
+      },
+    },
+    event: {
+      listen: (name, cb) => {
+        (events[name] || (events[name] = [])).push(cb);
+        return Promise.resolve(() => {});
+      },
+    },
+  };
+})();`;
+
+const emit = (page, name, payload) =>
+  page.evaluate(
+    ([n, p]) => {
+      const cbs = window.__TAURI_EVENTS__[n] || [];
+      if (!cbs.length) return `no ${n} listener`;
+      try {
+        for (const cb of cbs) cb({ event: n, payload: p });
+      } catch (e) {
+        return String(e);
+      }
+      return null;
+    },
+    [name, payload]
+  );
+
+test.describe("the web-logins event", () => {
+  test("a sign-in reported by Rust repaints the account row, live", async ({
+    page,
+  }) => {
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+    page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+
+    await page.addInitScript(TAURI_STUB);
+    await page.goto(url("/"));
+    await page.waitForTimeout(400);
+    // The stub was picked up: boot registered its listeners instead of taking
+    // the preview path.
+    const names = await page.evaluate(() => Object.keys(window.__TAURI_EVENTS__));
+    expect(names).toEqual(expect.arrayContaining(["usage", "web-logins"]));
+
+    await page.click("#settings-btn");
+    const claude = page.locator('#accounts [data-acct="claude"]');
+    const grok = page.locator('#accounts [data-acct="grok"]');
+    await expect(claude).toHaveText(/^(Sign in|登录)$/);
+
+    // What Rust emits when the embedded login window comes back signed in.
+    expect(await emit(page, "web-logins", ["claude"]), "the listener threw").toBeNull();
+    await expect(claude).toHaveClass(/\bon\b/);
+    await expect(claude).toHaveText(/^(Signed in|已登录)$/);
+    await expect(grok).not.toHaveClass(/\bon\b/);
+
+    // And when the account is signed out: the same event, a shorter list.
+    expect(await emit(page, "web-logins", []), "the listener threw").toBeNull();
+    await expect(claude).not.toHaveClass(/\bon\b/);
+    await expect(claude).toHaveText(/^(Sign in|登录)$/);
+
+    expect(errors, "console and page errors").toEqual([]);
+  });
+});
+
 // --------------------------------------------------------------- appearance
 test.describe("the appearance switch", () => {
   // The two inks the palette itself sets, so a test can tell the faces apart

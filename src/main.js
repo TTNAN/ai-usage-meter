@@ -208,7 +208,7 @@ async function boot() {
     } catch (_) {}
     if (platform === "macos") root.classList.add("vibrancy");
   }
-  if (PREVIEW) document.getElementById("version").textContent = "v0.8.0";
+  if (PREVIEW) document.getElementById("version").textContent = "v0.8.1";
   root.classList.add("platform-" + platform);
   if (platform !== "macos") {
     document.getElementById("setting-tray").hidden = true;
@@ -306,7 +306,7 @@ async function boot() {
   invoke("set_tray_mode", { mode: settings.tray }).catch(() => {});
   syncLang();
   TAURI.event.listen("usage", (e) => setStatus(e.payload));
-  TAURI.event.listen("web-logins", (e) => { store.store.webLogins = e.payload || []; renderAccounts(); render(); });
+  TAURI.event.listen("web-logins", (e) => { store.webLogins = e.payload || []; renderAccounts(); render(); });
   TAURI.event.listen("popover-shown", () => { showView("usage"); renderRings(); renderDock(); });
   setStatus(await invoke("get_status").catch(() => []));
 }

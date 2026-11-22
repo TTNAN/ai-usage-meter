@@ -42,6 +42,7 @@
 - **订阅档位** — 自动识别 Max、Pro、Plus、SuperGrok、Ultra、Individual 等档位。
 - **零配置** — 直接复用 ChatGPT 桌面版（Codex）、Claude Code、Grok Build、Gemini CLI / Antigravity、GitHub CLI / Copilot CLI 已有的登录；只用 Claude / Grok 网页版或 App？在设置里登录一次账号就行。Gemini 的访问令牌一小时就过期，应用会拿 refresh token 自己续上并写回 `~/.gemini/oauth_creds.json`，不用再跑一次 `gemini`。
 - **实时跟着变** — 后台每 1 到 5 分钟自动重读，你在网页、App、命令行哪里用掉的额度都会同步显示。
+- **外观自己说了算** — 设置里可以把外观钉在「跟随系统 / 深色 / 浅色」上，原生窗口也跟着换；「面板透明度」40%–100% 只把面板背景调薄，文字和图标始终清晰。
 - **原生质感** — macOS 原生毛玻璃弹窗、跟随系统深浅色、点击图标弹出、失焦自动收起；Windows 上从托盘弹出，Linux（X11）上从托盘菜单打开。
 - **拖到哪就在哪，可贴边** — 按住标题栏或空白处可以拖到屏幕任意位置；拖到左／右边缘松手就吸附上去，失焦时平滑滑出屏幕，只留一条 12px 的小把手，点它（或点菜单栏图标）再滑回来。设置里的「贴边自动收起」可以关掉。（Wayland 会话不让应用自己摆放窗口，那里的贴边开关会置灰并标明原因。）
 - **自定义服务配色** — 「设置 → 服务配色」一行一个服务：点色块用系统取色器自选，或点旁边的预设色，同心环、进度条和强调色立刻跟着变；Windows 和 Linux 的托盘小条也会用同一套颜色。点 ↺ 或「全部恢复」回到各服务原本的配色。Dock 视图里点「配色」打开的是同一份配色条（[展开的样子](docs/dock-colors.png)）。
@@ -89,7 +90,7 @@
 
 ## 安装
 
-从 [Releases](https://github.com/TTNAN/ai-usage-meter/releases/latest) 下载最新版 —— 当前 [v0.8.0](https://github.com/TTNAN/ai-usage-meter/releases/tag/v0.8.0)，macOS `.dmg`、Windows `.exe` 与 `.msi`、Linux `.deb` 与 `.AppImage` 都在里面：
+从 [Releases](https://github.com/TTNAN/ai-usage-meter/releases/latest) 下载最新版 —— 当前 [v0.8.1](https://github.com/TTNAN/ai-usage-meter/releases/tag/v0.8.1)，macOS `.dmg`、Windows `.exe` 与 `.msi`、Linux `.deb` 与 `.AppImage` 都在里面：
 
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
@@ -104,7 +105,7 @@ xattr -cr "/Applications/AI Usage Meter.app"
 > [!TIP]
 > 应用尚未公证，所以首次打开被 macOS 拦下时，右键 → 打开，或者运行上面这行命令即可；之后就能正常双击启动了。
 >
-> Linux：`.deb` 用 `sudo apt install ./AI.Usage.Meter_0.8.0_amd64.deb` 安装；`.AppImage` 加 `chmod +x` 后直接运行（AppImage 需要 FUSE，或用 `--appimage-extract-and-run`）。Wayland 会话下没有全局快捷键，也不能贴边——这是 Wayland 的限制，应用会在设置里说明。
+> Linux：`.deb` 用 `sudo apt install ./AI.Usage.Meter_0.8.1_amd64.deb` 安装；`.AppImage` 加 `chmod +x` 后直接运行（AppImage 需要 FUSE，或用 `--appimage-extract-and-run`）。Wayland 会话下没有全局快捷键，也不能贴边——这是 Wayland 的限制，应用会在设置里说明。
 
 然后登录你在用的工具（用哪个登哪个，没登录的会显示「未连接」）：
 
@@ -219,6 +220,7 @@ cd src-tauri && cargo test                        # 应用层（需要 Tauri 的
 - [x] 把 Dock 版并进同一个应用：环图 / Dock 双形态（0.7.0）
 - [x] Linux 托盘：`.deb` 与 `.AppImage`
 - [x] 应用内轻量更新检查：GitHub Releases，24 小时内最多问一次（0.8.0）
+- [x] 外观手动切换（跟随系统 / 深色 / 浅色）与面板透明度（0.8.1）
 - [ ] 更多服务：Cursor、Windsurf
 - [ ] macOS 签名与公证
 
