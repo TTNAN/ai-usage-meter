@@ -53,7 +53,7 @@
 
 ## 安装
 
-从 [Releases](https://github.com/TTNAN/ai-usage-meter/releases/latest) 下载最新版 —— 当前 [v0.7.1](https://github.com/TTNAN/ai-usage-meter/releases/tag/v0.7.1)，macOS `.dmg`、Windows `.exe` 与 `.msi`、Linux `.deb` 与 `.AppImage` 都在里面：
+从 [Releases](https://github.com/TTNAN/ai-usage-meter/releases/latest) 下载最新版 —— 当前 [v0.8.0](https://github.com/TTNAN/ai-usage-meter/releases/tag/v0.8.0)，macOS `.dmg`、Windows `.exe` 与 `.msi`、Linux `.deb` 与 `.AppImage` 都在里面：
 
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
@@ -68,7 +68,7 @@ xattr -cr "/Applications/AI Usage Meter.app"
 > [!TIP]
 > 应用尚未公证，所以首次打开被 macOS 拦下时，右键 → 打开，或者运行上面这行命令即可；之后就能正常双击启动了。
 >
-> Linux：`.deb` 用 `sudo apt install ./AI.Usage.Meter_0.7.1_amd64.deb` 安装；`.AppImage` 加 `chmod +x` 后直接运行（AppImage 需要 FUSE，或用 `--appimage-extract-and-run`）。Wayland 会话下没有全局快捷键，也不能贴边——这是 Wayland 的限制，应用会在设置里说明。
+> Linux：`.deb` 用 `sudo apt install ./AI.Usage.Meter_0.8.0_amd64.deb` 安装；`.AppImage` 加 `chmod +x` 后直接运行（AppImage 需要 FUSE，或用 `--appimage-extract-and-run`）。Wayland 会话下没有全局快捷键，也不能贴边——这是 Wayland 的限制，应用会在设置里说明。
 
 然后登录你在用的工具（用哪个登哪个，没登录的会显示「未连接」）：
 
@@ -121,7 +121,7 @@ xattr -cr "/Applications/AI Usage Meter.app"
 - 只发查询用量的请求（Gemini 用的是官方 CLI 自己的两个 POST 查询接口），不会改动你的账号或 CLI 配置文件。唯一会写回本机的，是 Gemini 令牌续期后 `~/.gemini/oauth_creds.json` 里的 `access_token` 和 `expiry_date` 两个字段，其余内容原样保留。
 - Gemini 续期用的是 Gemini CLI 自己的 OAuth 客户端，它不属于这个项目，因此本仓库不收录：续期时从你本机已安装的 `@google/gemini-cli` 包里读取（`oauth_creds.json` 自带时就先用它自己的），也可以用 `GEMINI_CLI_OAUTH_CLIENT_ID` / `GEMINI_CLI_OAUTH_CLIENT_SECRET` 指定。找不到就只显示「请重新登录」，不会去猜。
 - 用量走势只存在本应用自己的 `localStorage` 里，不经过网络。
-- 没有服务器、没有统计、没有遥测。代码就这几千行，欢迎审阅：[`crates/ai-usage-core/src/providers.rs`](src-tauri/crates/ai-usage-core/src/providers.rs)、[`web.rs`](src-tauri/src/web.rs)。
+- 没有服务器、没有统计、没有遥测。代码就这几千行，欢迎审阅：[`crates/ai-usage-core/src/providers/`](src-tauri/crates/ai-usage-core/src/providers)、[`web.rs`](src-tauri/src/web.rs)。
 
 ## 风险说明
 
@@ -172,7 +172,7 @@ cd src-tauri/crates/ai-usage-core && cargo test   # 核心库单元测试
 cd src-tauri && cargo test                        # 应用层（需要 Tauri 的系统依赖）
 ```
 
-想支持更多服务（Cursor、Windsurf…）？欢迎提 [Issue](https://github.com/TTNAN/ai-usage-meter/issues) 或 PR：每个服务只是 `ai-usage-core/src/providers.rs` 里的一个函数。
+想支持更多服务（Cursor、Windsurf…）？欢迎提 [Issue](https://github.com/TTNAN/ai-usage-meter/issues) 或 PR：每个服务只是 `ai-usage-core/src/providers/` 里的一个文件。
 
 ## 路线图
 
@@ -182,6 +182,7 @@ cd src-tauri && cargo test                        # 应用层（需要 Tauri 的
 - [x] 全局快捷键（`⌘⇧U` / `Ctrl+Shift+U`，或自己录制）
 - [x] 把 Dock 版并进同一个应用：环图 / Dock 双形态（0.7.0）
 - [x] Linux 托盘：`.deb` 与 `.AppImage`
+- [x] 应用内轻量更新检查：GitHub Releases，24 小时内最多问一次（0.8.0）
 - [ ] 更多服务：Cursor、Windsurf
 - [ ] macOS 签名与公证
 

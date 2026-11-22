@@ -53,7 +53,7 @@ Tired of hitting "usage limit reached" mid-task? AI Usage Meter puts every 5-hou
 
 ## Install
 
-Grab the latest from [Releases](https://github.com/TTNAN/ai-usage-meter/releases/latest) — [v0.7.1](https://github.com/TTNAN/ai-usage-meter/releases/tag/v0.7.1) today, with the macOS `.dmg`, the Windows `.exe` and `.msi`, and the Linux `.deb` and `.AppImage`:
+Grab the latest from [Releases](https://github.com/TTNAN/ai-usage-meter/releases/latest) — [v0.8.0](https://github.com/TTNAN/ai-usage-meter/releases/tag/v0.8.0) today, with the macOS `.dmg`, the Windows `.exe` and `.msi`, and the Linux `.deb` and `.AppImage`:
 
 | Platform | File | Notes |
 | --- | --- | --- |
@@ -68,7 +68,7 @@ xattr -cr "/Applications/AI Usage Meter.app"
 > [!TIP]
 > The app is not notarised yet, so if macOS blocks the first launch, right-click → Open (or run the command above) once and it opens normally from then on.
 >
-> Linux: install the `.deb` with `sudo apt install ./AI.Usage.Meter_0.7.1_amd64.deb`, or `chmod +x` the `.AppImage` and run it (AppImage needs FUSE, or use `--appimage-extract-and-run`). A Wayland session grants no global shortcut and lets no app place its own window, so neither the shortcut nor edge tucking is available there — Settings says so.
+> Linux: install the `.deb` with `sudo apt install ./AI.Usage.Meter_0.8.0_amd64.deb`, or `chmod +x` the `.AppImage` and run it (AppImage needs FUSE, or use `--appimage-extract-and-run`). A Wayland session grants no global shortcut and lets no app place its own window, so neither the shortcut nor edge tucking is available there — Settings says so.
 
 Then sign in to whichever tools you use (the rest just show "Not connected"):
 
@@ -121,7 +121,7 @@ Web-account requests run in a hidden window, on the service's own page (just lik
 - Usage queries only (Gemini's are two POST queries the official CLI makes too). Your accounts and CLI config files are never modified. The one thing written back is `access_token` and `expiry_date` in `~/.gemini/oauth_creds.json` after a token renewal; every other field is left as it was.
 - Gemini renewals use Gemini CLI's own OAuth client. It belongs to the CLI, not to this project, so this repository does not carry it: the pair is read from the `@google/gemini-cli` package installed on your machine (or from `oauth_creds.json` when it names one), and `GEMINI_CLI_OAUTH_CLIENT_ID` / `GEMINI_CLI_OAUTH_CLIENT_SECRET` override it. When neither is found the row asks you to sign in again instead of guessing.
 - The usage trend lives in this app's own `localStorage` and never touches the network.
-- No servers, no analytics, no telemetry. A few thousand lines — read [`crates/ai-usage-core/src/providers.rs`](src-tauri/crates/ai-usage-core/src/providers.rs) and [`web.rs`](src-tauri/src/web.rs).
+- No servers, no analytics, no telemetry. A few thousand lines — read [`crates/ai-usage-core/src/providers/`](src-tauri/crates/ai-usage-core/src/providers) and [`web.rs`](src-tauri/src/web.rs).
 
 ## Caveats
 
@@ -172,7 +172,7 @@ cd src-tauri/crates/ai-usage-core && cargo test   # core unit tests
 cd src-tauri && cargo test                        # app layer (needs Tauri's system deps)
 ```
 
-Want another service (Cursor, Windsurf…)? Open an [issue](https://github.com/TTNAN/ai-usage-meter/issues) or a PR — each service is a single function in `ai-usage-core/src/providers.rs`.
+Want another service (Cursor, Windsurf…)? Open an [issue](https://github.com/TTNAN/ai-usage-meter/issues) or a PR — each service is a single file under `ai-usage-core/src/providers/`.
 
 ## Roadmap
 
@@ -182,6 +182,7 @@ Want another service (Cursor, Windsurf…)? Open an [issue](https://github.com/T
 - [x] A global shortcut (`⌘⇧U` / `Ctrl+Shift+U`, or one you record)
 - [x] The Dock edition folded into one app: rings and dock views (0.7.0)
 - [x] A Linux build: `.deb` and `.AppImage`, with a tray icon
+- [x] A lightweight in-app update check: GitHub Releases, at most once a day (0.8.0)
 - [ ] More services: Cursor, Windsurf
 - [ ] Signed and notarised macOS builds
 

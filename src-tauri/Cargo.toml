@@ -1,6 +1,6 @@
 [package]
 name = "ai-usage-meter"
-version = "0.7.1"
+version = "0.8.0"
 description = "See how much Claude, ChatGPT (Codex), Grok, Gemini and GitHub Copilot quota you have left — as a rings popover or a compact dock bar, right from your menu bar / system tray."
 authors = ["TTNAN"]
 license = "MIT"
