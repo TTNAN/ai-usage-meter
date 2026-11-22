@@ -70,15 +70,6 @@ xattr -cr "/Applications/AI Usage Meter.app"
 >
 > Linux: install the `.deb` with `sudo apt install ./AI.Usage.Meter_0.7.1_amd64.deb`, or `chmod +x` the `.AppImage` and run it (AppImage needs FUSE, or use `--appimage-extract-and-run`). A Wayland session grants no global shortcut and lets no app place its own window, so neither the shortcut nor edge tucking is available there — Settings says so.
 
-### Package managers
-
-The quieter way in — the AUR manifest lives in [`packaging/`](packaging/README.md) and tracks every release:
-
-| Platform | Command |
-| --- | --- |
-| Arch Linux (AUR) | `yay -S ai-usage-meter-bin` |
-
-
 Then sign in to whichever tools you use (the rest just show "Not connected"):
 
 | Service | Easiest | Also works |
