@@ -70,15 +70,6 @@ xattr -cr "/Applications/AI Usage Meter.app"
 >
 > Linux：`.deb` 用 `sudo apt install ./AI.Usage.Meter_0.7.1_amd64.deb` 安装；`.AppImage` 加 `chmod +x` 后直接运行（AppImage 需要 FUSE，或用 `--appimage-extract-and-run`）。Wayland 会话下没有全局快捷键，也不能贴边——这是 Wayland 的限制，应用会在设置里说明。
 
-### 包管理器
-
-更省事的装法——Arch Linux 的清单在 [`packaging/`](packaging/README.md) 里，发新版本时跟着 Release 一起更新：
-
-| 平台 | 命令 |
-| --- | --- |
-| Arch Linux（AUR） | `yay -S ai-usage-meter-bin` |
-
-
 然后登录你在用的工具（用哪个登哪个，没登录的会显示「未连接」）：
 
 | 服务 | 最简单的方式 | 也可以 |
