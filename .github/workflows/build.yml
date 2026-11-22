@@ -46,9 +46,32 @@ jobs:
           cargo test
           cargo test --manifest-path crates/ai-usage-core/Cargo.toml
 
+  # The page has no build step (plain ESM, loadable straight from `src/`), so
+  # the UI suite serves `src/` as-is and drives it with Playwright. The npm
+  # packages here are test tooling only — nothing touches the app's sources.
+  ui-tests:
+    name: UI tests (Playwright)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Serve the app
+        run: python3 -m http.server 4173 -d src &
+      - name: Install Playwright
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install --no-fund --no-audit --save-dev @playwright/test
+          npx playwright install --with-deps chromium
+      - name: Run UI tests
+        run: npx playwright test tests/ui.spec.mjs
+        env:
+          UI_PORT: 4173
+
   build:
     name: Build (${{ matrix.name }})
-    needs: test
+    needs: [test, ui-tests]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
