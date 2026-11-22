@@ -1,0 +1,229 @@
+/* ----------------------------------------------------------- settings */
+.view-settings { padding: 2px 12px 8px; }
+/* The settings page is taller than a popover should be: it scrolls inside the
+   card, with the back button staying put. */
+.settings-body {
+  max-height: 592px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hair-strong) transparent;
+  padding: 1px 2px 2px 0;
+}
+.settings-body::-webkit-scrollbar { width: 9px; }
+.settings-body::-webkit-scrollbar-track { background: transparent; }
+.settings-body::-webkit-scrollbar-thumb {
+  background: var(--hair-strong);
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.settings-body::-webkit-scrollbar-thumb:hover { background: var(--text-3); background-clip: content-box; }
+/* Only while another group is cut off: fade the edge instead of slicing it. */
+.settings-body.overflowing {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+}
+.back {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 6px 8px 6px 4px; margin: 0 0 6px; border-radius: 8px;
+  font-weight: 600; font-size: 13px; color: var(--text);
+}
+.back svg { width: 15px; height: 15px; color: var(--text-2); }
+.back:hover { background: var(--raise-hover); }
+.group {
+  background: var(--raise); border-radius: 12px;
+  box-shadow: inset 0 0 0 0.5px var(--hair);
+  margin-bottom: 10px; overflow: hidden;
+}
+.setting, .link-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 9px 12px; min-height: 40px; width: 100%; text-align: left;
+  font-size: 12.5px;
+}
+.setting + .setting, .link-row + .link-row { box-shadow: inset 0 1px 0 var(--hair); }
+.seg {
+  display: inline-flex; padding: 2px; border-radius: 8px; background: var(--raise-hover);
+  box-shadow: inset 0 0 0 0.5px var(--hair);
+}
+.seg button {
+  font-size: 11.5px; font-weight: 500; padding: 3px 9px; border-radius: 6px; color: var(--text-2);
+  transition: background 0.15s, color 0.15s;
+}
+.seg button.on {
+  background: var(--bg-solid); color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), inset 0 0 0 0.5px var(--hair-strong);
+}
+@media (prefers-color-scheme: light) { .seg button.on { background: #fff; } }
+/* The shortcut row: the segmented control, with the "another app has it" note
+   underneath it rather than beside it. */
+.sc-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.sc-side .seg button { padding: 3px 7px; white-space: nowrap; }
+.sc-note { font-size: 10px; line-height: 1.35; color: var(--c-warn); text-align: right; max-width: 190px; }
+/* A recorded chord can be longer than the row has room for beside its label.
+   Rather than clip it, the control drops to its own line — the row grows. */
+#setting-shortcut { flex-wrap: wrap; row-gap: 6px; }
+#setting-shortcut .sc-side { max-width: 100%; }
+/* A hint is the recorder talking, not a failure: quieter, and it sits where
+   the error would. */
+.sc-note.hint { color: var(--text-3); }
+/* While the Custom pill listens, it pulses amber, the one colour nothing else
+   in the row uses — so "waiting for keys" cannot be mistaken for "on". */
+.sc-side .seg button[data-custom].rec {
+  color: var(--text); background: var(--raise-hover);
+  box-shadow: inset 0 0 0 1px var(--c-warn);
+}
+.sc-side .seg button[data-custom].rec::before {
+  content: ""; display: inline-block; width: 5px; height: 5px;
+  margin-right: 5px; vertical-align: 1px; border-radius: 50%;
+  background: var(--c-warn); animation: sc-listen 1.2s ease-in-out infinite;
+}
+@keyframes sc-listen { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .sc-side .seg button[data-custom].rec::before { animation: none; } }
+.switch {
+  appearance: none; -webkit-appearance: none;
+  width: 32px; height: 19px; border-radius: 99px; flex: none;
+  background: var(--track); box-shadow: inset 0 0 0 0.5px var(--hair-strong);
+  position: relative; transition: background 0.2s;
+}
+.switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.25s var(--ease);
+}
+.switch:checked { background: #34c759; }
+.switch:checked::after { transform: translateX(13px); }
+.link-row { justify-content: flex-start; color: var(--text); transition: background 0.15s; }
+.link-row:hover { background: var(--raise-hover); }
+.link-row svg { width: 15px; height: 15px; color: var(--text-2); flex: none; }
+.link-row .chev, .link-row .kbd { margin-left: auto; color: var(--text-3); font-size: 11px; }
+.link-row.danger { color: var(--c-danger); }
+.link-row.danger svg { color: var(--c-danger); }
+.acct-name { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.acct-name .tile { width: 24px; height: 24px; border-radius: 7px; flex: none; }
+.acct-name b { display: block; font-weight: 550; font-size: 12.5px; }
+.acct-name small { display: block; font-size: 10.5px; color: var(--text-3); margin-top: 1px; }
+.pill {
+  flex: none; font-size: 11.5px; font-weight: 600; padding: 4px 11px; border-radius: 99px;
+  background: var(--text); color: var(--bg-solid); transition: opacity 0.15s, background 0.15s;
+}
+.pill:hover { opacity: 0.85; }
+.pill.on { background: var(--raise-hover); color: var(--text-2); box-shadow: inset 0 0 0 0.5px var(--hair-strong); }
+.pill.on::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #34c759; margin-right: 6px; transform: translateY(-1px); }
+.inline-btn {
+  margin-left: 2px; font-size: 11px; font-weight: 600; color: var(--accent, var(--text));
+  padding: 0 2px; border-radius: 4px; white-space: nowrap;
+}
+.inline-btn:hover { text-decoration: underline; }
+.fineprint { font-size: 11px; color: var(--text-3); line-height: 1.5; padding: 2px 6px 4px; }
+
+/* ------------------------------------------------------------- colors */
+/* One row per service: its mark, its name, the hex it is set to, a few
+   presets, the swatch that opens the system colour picker, and a reset. */
+.group-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px 6px; font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3);
+}
+.mini {
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0; text-transform: none;
+  color: var(--text-2); padding: 2px 7px; border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+.mini:hover { background: var(--raise-hover); color: var(--text); }
+.color-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px 5px 12px; min-height: 36px;
+}
+.color-row + .color-row { box-shadow: inset 0 1px 0 var(--hair); }
+.color-row .tile { width: 22px; height: 22px; border-radius: 6.5px; }
+.color-row .tile i { width: 12px; height: 12px; }
+.color-row .tile img { width: 14px; height: 14px; }
+.color-name { font-size: 12.5px; font-weight: 550; }
+.color-hex {
+  margin-left: auto; font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+  font-size: 10px; letter-spacing: 0.02em; color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.presets { display: flex; gap: 5px; }
+.preset {
+  width: 11px; height: 11px; border-radius: 50%; background: var(--p);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.22), 0 1px 1.5px rgba(0, 0, 0, 0.22);
+  transition: transform 0.15s var(--ease), box-shadow 0.15s;
+}
+.preset:hover { transform: scale(1.2); }
+.preset.on { box-shadow: 0 0 0 1.5px var(--bg-solid), 0 0 0 2.5px var(--p); }
+/* The swatch is the native colour input, stretched over a painted square:
+   clicking it opens the system picker, no JS needed. */
+.swatch {
+  position: relative; width: 19px; height: 19px; border-radius: 6px; flex: none;
+  background: var(--sw); overflow: hidden;
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.24), 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.swatch:hover { box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.5), 0 1px 3px rgba(0, 0, 0, 0.35); }
+.swatch input {
+  position: absolute; inset: -6px; width: calc(100% + 12px); height: calc(100% + 12px);
+  opacity: 0; border: 0; padding: 0; background: none; cursor: pointer;
+}
+.color-reset {
+  width: 19px; height: 19px; border-radius: 6px; flex: none;
+  display: grid; place-items: center; color: var(--text-3);
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
+}
+.color-reset:hover { background: var(--raise-hover); color: var(--text); }
+.color-reset:disabled { opacity: 0.25; }
+.color-reset:disabled:hover { background: none; color: var(--text-3); }
+.color-reset svg { width: 12px; height: 12px; }
+
+/* ---------------------------------------------------------- edge dock */
+/* While the card is tucked against a screen edge, only a 12 px strip of the
+   window is on screen: the card fades away and this handle sits in that strip
+   on the side that is still visible. */
+.panel { transition: opacity 0.16s ease, transform 0.24s var(--ease); }
+html.edge-hidden .panel { opacity: 0; transform: scale(0.985); pointer-events: none; }
+.edge-handle {
+  position: fixed; top: 50%; width: 10px; height: 104px;
+  transform: translateY(-50%);
+  display: grid; place-items: center;
+  border-radius: 6px; color: rgba(24, 24, 27, 0.55);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(244, 244, 245, 0.62));
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.14), 0 0 14px rgba(110, 155, 255, 0.5);
+  opacity: 0; pointer-events: none; z-index: 10;
+  transition: opacity 0.18s ease, transform 0.22s var(--ease), box-shadow 0.2s;
+}
+/* Docked on the left screen edge, the window's right-hand strip is what stays
+   visible — and the other way round. */
+html.edge-left .edge-handle { right: 1px; }
+html.edge-right .edge-handle { left: 1px; }
+html.edge-right .edge-handle svg { transform: rotate(180deg); }
+html.edge-hidden .edge-handle { opacity: 1; pointer-events: auto; }
+.edge-handle:hover { box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.14), 0 0 18px rgba(110, 155, 255, 0.8); }
+.edge-handle:active { transform: translateY(-50%) scale(0.94); }
+.edge-handle svg { width: 7px; height: 16px; }
+@media (prefers-color-scheme: light) {
+  .edge-handle { color: rgba(24, 24, 27, 0.5); }
+}
+
+/* ------------------------------------------------------------- footer */
+.bottom {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 16px 11px;
+  box-shadow: inset 0 1px 0 var(--hair);
+  font-size: 11px; color: var(--text-3);
+}
+/* The view switch lives here in both views: the one control that changes the
+   app's shape, named plainly in the user's language. */
+.view-seg { flex: none; }
+.view-seg button { font-size: 10.5px; padding: 2.5px 7px; }
+.privacy-chip { display: inline-flex; align-items: center; gap: 5px; min-width: 0; white-space: nowrap; }
+.privacy-chip svg { width: 12px; height: 12px; }
+.demo-chip {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 99px;
+  color: var(--c-warn); background: color-mix(in srgb, var(--c-warn) 14%, transparent);
+}
+.version { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
