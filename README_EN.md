@@ -49,7 +49,43 @@ Tired of hitting "usage limit reached" mid-task? AI Usage Meter puts every 5-hou
 - **Calm and honest** — gentle background polling, rate-limited manual refresh; one failed request keeps the last reading (clearly marked) and it never makes numbers up.
 - **Tiny** — Tauri v2 and plain HTML/CSS/JS. No Node, no bundler.
 
-<p align="center"><img src="docs/states.png" alt="Chinese UI, service colours, first run and light mode" width="880" /></p>
+## Screenshots
+
+Real screenshots, demo data — click any of them for the full size.
+
+<table align="center">
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/dock-colors.png" alt="The colours drawer open under the dock tray" width="420" />
+      <br />
+      <sub><b>Your colours</b> · the drawer opens right under the tray</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/dock-fewer.png" alt="A three-service dock, narrowed to 496 px by itself" width="420" />
+      <br />
+      <sub><b>Three services</b> · the panel narrows to 496 px by itself</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/update-notice.png" alt="The new-version pill and the update link on an API-changed row" width="420" />
+      <br />
+      <sub><b>Update notice</b> · a quiet pill, and a direct link to the fix</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/modes-used.png" alt="Used mode in the rings view and in the dock view" width="420" />
+      <br />
+      <sub><b>Used / Left</b> · one click flips both views, trends follow</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <img src="docs/states.png" alt="Chinese UI, service colours, first run and light mode" width="880" />
+      <br />
+      <sub><b>Chinese UI · service colours · first run · light mode</b></sub>
+    </td>
+  </tr>
+</table>
 
 ## Install
 
